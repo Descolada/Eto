@@ -37,6 +37,82 @@ namespace Eto.Wpf.Forms
 			}
 		}
 
+		public Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default)
+		{
+			var tcs = new TaskCompletionSource<DialogResult>();
+			Application.Instance.InvokeAsync(() =>
+			{
+				using (var visualStyles = new EnableThemingInScope(ApplicationHandler.EnableVisualStyles))
+				{
+					var parentWindow = parent?.ParentWindow;
+					if (parentWindow?.HasFocus == false)
+						parentWindow.Focus();
+
+					var element = parent == null ? null : parent.GetContainerControl();
+					var window = element == null ? null : element.GetVisualParent<sw.Window>();
+					var buttons = Convert(Buttons);
+					var defaultButton = Convert(DefaultButton, Buttons);
+					var icon = Convert(Type);
+					var caption = Caption ?? parentWindow?.Title;
+
+					swf.Form cancelOwner = null;
+					CancellationTokenRegistration ctr = default;
+					try
+					{
+						sw.MessageBoxResult? messageBoxResult = null;
+
+						if (cancellationToken.CanBeCanceled)
+						{
+							cancelOwner = new swf.Form
+							{
+								Size = sd.Size.Empty,
+							};
+							if (window != null)
+								cancelOwner.Owner = swf.Control.FromHandle(new System.Windows.Interop.WindowInteropHelper(window).Handle) as swf.Form;
+
+							cancelOwner.Load += (_, _) => cancelOwner.Hide();
+							cancelOwner.Show();
+
+							ctr = cancellationToken.Register(() =>
+							{
+								if (cancelOwner != null && !cancelOwner.IsDisposed)
+								{
+									cancelOwner.BeginInvoke(new Action(() =>
+									{
+										_ = tcs.TrySetCanceled();
+										cancelOwner.Close();
+									}));
+								}
+								else
+									_ = tcs.TrySetCanceled();
+							});
+						}
+
+						if (cancelOwner != null)
+							messageBoxResult = WpfMessageBox.Show(new swf.WindowWrapper(cancelOwner.Handle), Text, caption, buttons, icon, defaultButton);
+						else if (window != null)
+							messageBoxResult = WpfMessageBox.Show(window, Text, caption, buttons, icon, defaultButton);
+						else
+							messageBoxResult = WpfMessageBox.Show(Text, caption, buttons, icon, defaultButton);
+
+						WpfFrameworkElementHelper.ShouldCaptureMouse = false;
+						tcs.TrySetResult(Convert(messageBoxResult ?? sw.MessageBoxResult.None));
+					}
+					catch (Exception ex)
+					{
+						tcs.TrySetException(ex);
+					}
+					finally
+					{
+						ctr.Dispose();
+						cancelOwner?.Dispose();
+					}
+				}
+			});
+
+			return tcs.Task;
+		}
+
 		public static sw.MessageBoxResult Convert(MessageBoxDefaultButton defaultButton, MessageBoxButtons buttons)
 		{
 			switch (defaultButton)

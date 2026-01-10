@@ -55,7 +55,7 @@ namespace Eto.Wpf.Forms
 					var icon = Convert(Type);
 					var caption = Caption ?? parentWindow?.Title;
 
-					swf.Form cancelOwner = null;
+					System.Windows.Window cancelOwner = null;
 					CancellationTokenRegistration ctr = default;
 					try
 					{
@@ -63,25 +63,28 @@ namespace Eto.Wpf.Forms
 
 						if (cancellationToken.CanBeCanceled)
 						{
-							cancelOwner = new swf.Form
+							cancelOwner = new System.Windows.Window()
 							{
-								Size = sd.Size.Empty,
+								Width = 0,
+								Height = 0,
+								WindowStyle = System.Windows.WindowStyle.None,
+								Visibility = System.Windows.Visibility.Hidden,
+								ShowInTaskbar = false,
+								ShowActivated = false,
+								Owner = window,
 							};
-							if (window != null)
-								cancelOwner.Owner = swf.Control.FromHandle(new System.Windows.Interop.WindowInteropHelper(window).Handle) as swf.Form;
-
-							cancelOwner.Load += (_, _) => cancelOwner.Hide();
 							cancelOwner.Show();
 
 							ctr = cancellationToken.Register(() =>
 							{
-								if (cancelOwner != null && !cancelOwner.IsDisposed)
+								if (cancelOwner != null)
 								{
-									cancelOwner.BeginInvoke(new Action(() =>
+									cancelOwner.Dispatcher.Invoke(() =>
 									{
 										_ = tcs.TrySetCanceled();
+										cancelOwner.Owner?.Focus();
 										cancelOwner.Close();
-									}));
+									});
 								}
 								else
 									_ = tcs.TrySetCanceled();
@@ -89,7 +92,7 @@ namespace Eto.Wpf.Forms
 						}
 
 						if (cancelOwner != null)
-							messageBoxResult = WpfMessageBox.Show(new swf.WindowWrapper(cancelOwner.Handle), Text, caption, buttons, icon, defaultButton);
+							messageBoxResult = WpfMessageBox.Show(cancelOwner, Text, caption, buttons, icon, defaultButton);
 						else if (window != null)
 							messageBoxResult = WpfMessageBox.Show(window, Text, caption, buttons, icon, defaultButton);
 						else
@@ -105,7 +108,8 @@ namespace Eto.Wpf.Forms
 					finally
 					{
 						ctr.Dispose();
-						cancelOwner?.Dispose();
+						cancelOwner?.Owner?.Focus();
+						cancelOwner?.Close();
 					}
 				}
 			});

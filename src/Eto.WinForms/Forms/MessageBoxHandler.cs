@@ -52,7 +52,7 @@ namespace Eto.WinForms.Forms
 						}
 						cancelOwner = new swf.Form
 						{
-							Size = Size.Empty,
+							Size = sd.Size.Empty,
 						};
 						if (parentWindow?.ControlObject is swf.Form parentForm)
 							cancelOwner.Owner = parentForm;
@@ -66,7 +66,7 @@ namespace Eto.WinForms.Forms
 								cancelOwner.BeginInvoke(new Action(() =>
 								{
 									_ = tcs.TrySetCanceled();
-									cancelOwner.Close();
+									cancelOwner.Dispose();
 								}));
 							}
 							else
@@ -88,6 +88,7 @@ namespace Eto.WinForms.Forms
 				finally
 				{
 					ctr.Dispose();
+					cancelOwner?.Owner?.Focus();
 					cancelOwner?.Dispose();
 				}
 			});

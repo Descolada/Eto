@@ -14,26 +14,51 @@ namespace Eto.Mac.Forms
 
 		public DialogResult ShowDialog(Control parent)
 		{
-			MacView.InMouseTrackingLoop = false;
-			var alert = new NSAlert();
-
-			AddButtons(alert);
-
-			alert.AlertStyle = Convert(Type);
-			alert.MessageText = Caption ?? string.Empty;
-			alert.InformativeText = Text ?? string.Empty;
+			var alert = CreateDialog();
 			var ret = MacModal.Run(alert, parent);
-			switch (Buttons)
+			return ConvertAlertResult(ret);
+		}
+
+		public Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default)
+		{
+			if (cancellationToken.IsCancellationRequested)
+				return Task.FromCanceled<DialogResult>(cancellationToken);
+
+			var tcs = new TaskCompletionSource<DialogResult>();
+			Application.Instance.InvokeAsync(() =>
 			{
-				default:
-					return DialogResult.Ok;
-				case MessageBoxButtons.OKCancel:
-					return (ret == 1000) ? DialogResult.Ok : DialogResult.Cancel;
-				case MessageBoxButtons.YesNo:
-					return (ret == 1000) ? DialogResult.Yes : DialogResult.No;
-				case MessageBoxButtons.YesNoCancel:
-					return (ret == 1000) ? DialogResult.Yes : (ret == 1001) ? DialogResult.Cancel : DialogResult.No;
-			}
+				CancellationTokenRegistration ctr = default;
+				try
+				{
+					var alert = CreateDialog();
+
+					if (cancellationToken.CanBeCanceled)
+					{
+						ctr = cancellationToken.Register(() =>
+						{
+							NSApplication.SharedApplication.BeginInvokeOnMainThread(() =>
+							{
+								if (tcs.TrySetCanceled())
+									NSApplication.SharedApplication.StopModalWithCode((nint)NSModalResponse.Cancel);
+							});
+						});
+					}
+
+					var ret = alert.RunModal();
+					if (!tcs.Task.IsCompleted)
+						tcs.TrySetResult(ConvertAlertResult((int)ret));
+				}
+				catch (Exception ex)
+				{
+					tcs.TrySetException(ex);
+				}
+				finally
+				{
+					ctr.Dispose();
+				}
+			});
+
+			return tcs.Task;
 		}
 
 		class CancelView : NSView
@@ -55,6 +80,21 @@ namespace Eto.Mac.Forms
 					return true;
 				}
 				return base.PerformKeyEquivalent(theEvent);
+			}
+		}
+
+		DialogResult ConvertAlertResult(int ret)
+		{
+			switch (Buttons)
+			{
+				default:
+					return DialogResult.Ok;
+				case MessageBoxButtons.OKCancel:
+					return (ret == 1000) ? DialogResult.Ok : DialogResult.Cancel;
+				case MessageBoxButtons.YesNo:
+					return (ret == 1000) ? DialogResult.Yes : DialogResult.No;
+				case MessageBoxButtons.YesNoCancel:
+					return (ret == 1000) ? DialogResult.Yes : (ret == 1001) ? DialogResult.Cancel : DialogResult.No;
 			}
 		}
 
@@ -140,6 +180,20 @@ namespace Eto.Mac.Forms
 		{
 			// set an accessory view to listen for escape key and cmd+.
 			alert.AccessoryView = new CancelView { Code = code };
+		}
+
+		NSAlert CreateDialog()
+		{
+			MacView.InMouseTrackingLoop = false;
+			var alert = new NSAlert();
+
+			AddButtons(alert);
+
+			alert.AlertStyle = Convert(Type);
+			alert.MessageText = Caption ?? string.Empty;
+			alert.InformativeText = Text ?? string.Empty;
+
+			return alert;
 		}
 
 		static NSAlertStyle Convert(MessageBoxType type)

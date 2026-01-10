@@ -24,6 +24,108 @@ namespace Eto.WinForms.Forms
 			return result.ToEto();
 		}
 
+		public Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default)
+		{
+			var tcs = new TaskCompletionSource<DialogResult>();
+
+			Application.Instance.InvokeAsync(() =>
+			{
+				CancellationTokenRegistration ctr = default;
+				swf.Form cancelOwner = null;
+				try
+				{
+					var parentWindow = parent?.ParentWindow;
+					if (parentWindow?.HasFocus == false)
+						parentWindow.Focus();
+
+					var caption = Caption ?? parentWindow?.Title;
+					swf.Control ownerControl;
+
+					bool useCancelOwner = cancellationToken.CanBeCanceled || cancellationToken.IsCancellationRequested;
+					if (useCancelOwner)
+					{
+						if (cancellationToken.IsCancellationRequested)
+						{
+							tcs.TrySetCanceled();
+							ctr.Dispose();
+							return;
+						}
+						// Create a hidden owner to own the message box, so we can close it later if cancelled
+						cancelOwner = new swf.Form
+						{
+							Size = sd.Size.Empty,
+						};
+						if (parentWindow?.ControlObject is swf.Form parentForm)
+							cancelOwner.Owner = parentForm;
+
+						ownerControl = cancelOwner;
+
+						ctr = cancellationToken.Register(() =>
+						{
+							if (cancelOwner != null && !cancelOwner.IsDisposed)
+							{
+								cancelOwner.BeginInvoke(new Action(() =>
+								{
+									if (tcs.TrySetCanceled())
+										CloseMessageBox(cancelOwner); // Just disposing of the owner causes a flicker (unlike WPF), so close the message box properly
+								}));
+							}
+							else
+								_ = tcs.TrySetCanceled();
+						});
+					}
+					else
+					{
+						ownerControl = parent == null ? null : (swf.Control)parent.ControlObject;
+					}
+
+					var result = swf.MessageBox.Show(ownerControl, Text, caption, Convert(Buttons), Convert(Type), Convert(DefaultButton, Buttons));
+					tcs.TrySetResult(result.ToEto());
+				}
+				catch (Exception ex)
+				{
+					tcs.TrySetException(ex);
+				}
+				finally
+				{
+					ctr.Dispose();
+					cancelOwner?.Owner?.Focus();
+					cancelOwner?.Dispose();
+				}
+			});
+
+			return tcs.Task;
+		}
+
+		static void CloseMessageBox(swf.Form owner)
+		{
+			if (owner == null || owner.IsDisposed || !owner.IsHandleCreated)
+				return;
+
+			var ownerHandle = owner.Handle;
+			IntPtr messageBoxHandle = IntPtr.Zero;
+			var threadId = Win32.GetCurrentThreadId();
+			Win32.EnumThreadProc callback = (hWnd, lParam) =>
+			{
+				if (hWnd == ownerHandle)
+					return true;
+
+				if (Win32.GetWindow(hWnd, Win32.GW.OWNER) != ownerHandle)
+					return true;
+
+				if (!Win32.IsDialogWindow(hWnd))
+					return true;
+
+				messageBoxHandle = hWnd;
+				return false;
+			};
+
+			Win32.EnumThreadWindows(threadId, callback, IntPtr.Zero);
+
+			if (messageBoxHandle != IntPtr.Zero)
+				Win32.PostMessage(messageBoxHandle, Win32.WM.CLOSE, IntPtr.Zero, IntPtr.Zero);
+		}
+
 		public static swf.MessageBoxDefaultButton Convert(MessageBoxDefaultButton defaultButton, MessageBoxButtons buttons)
 		{
 			switch (defaultButton)

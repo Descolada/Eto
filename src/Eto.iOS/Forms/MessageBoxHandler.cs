@@ -11,6 +11,60 @@ namespace Eto.iOS.Forms
 			return DialogResult.Ok;
 		}
 
+		public Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default)
+		{
+			var tcs = new TaskCompletionSource<DialogResult>();
+			var alert = CreateAlert();
+
+			if (cancellationToken.CanBeCanceled)
+			{
+				cancellationToken.Register(() =>
+				{
+					alert.InvokeOnMainThread(() =>
+					{
+						alert.DismissWithClickedButtonIndex(alert.CancelButtonIndex, false);
+						tcs.TrySetCanceled();
+					});
+				});
+			}
+			else if (cancellationToken.IsCancellationRequested)
+			{
+				tcs.SetCanceled();
+				return tcs.Task;
+			}
+
+			alert.Clicked += (sender, args) => tcs.TrySetResult(ConvertResult(alert, args.ButtonIndex));
+
+			alert.Show();
+			return tcs.Task;
+		}
+
+		DialogResult ConvertResult(UIAlertView alert, nint buttonIndex)
+		{
+			switch (Buttons)
+			{
+				case MessageBoxButtons.OK:
+					return DialogResult.Ok;
+				case MessageBoxButtons.OKCancel:
+					return buttonIndex == alert.CancelButtonIndex ? DialogResult.Cancel : DialogResult.Ok;
+				case MessageBoxButtons.YesNo:
+					return buttonIndex == alert.CancelButtonIndex ? DialogResult.No : DialogResult.Yes;
+				case MessageBoxButtons.YesNoCancel:
+					if (buttonIndex == alert.CancelButtonIndex)
+						return DialogResult.Cancel;
+					return buttonIndex == 0 ? DialogResult.Yes : DialogResult.No;
+				default:
+					return DialogResult.None;
+			}
+		}
+
+		UIAlertView CreateAlert()
+		{
+			var alert = new UIAlertView(Caption ?? string.Empty, Text ?? string.Empty, null, null);
+			AddButtons(alert);
+			return alert;
+		}
+
 		void AddButtons(UIAlertView alert)
 		{
 			var OkButton = "OK";
@@ -90,4 +144,3 @@ namespace Eto.iOS.Forms
 		public MessageBoxDefaultButton DefaultButton { get; set; }
 	}
 }
-

@@ -194,6 +194,118 @@ public static class MessageBox
 	}
 
 	/// <summary>
+	/// Shows a message box asynchronously, blocking input to all windows of the application until closed
+	/// </summary>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(string text, MessageBoxType type = MessageBoxType.Information, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync((Control)null, text, null, type, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking input to all windows of the application until closed
+	/// </summary>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="caption">Caption for the title bar or heading of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(string text, string caption, MessageBoxType type = MessageBoxType.Information, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync((Control)null, text, caption, type, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking only the window of the specified <paramref name="parent"/> 
+	/// </summary>
+	/// <param name="parent">Parent control that triggered the message box</param>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(Control parent, string text, MessageBoxType type = MessageBoxType.Information, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync(parent, text, null, type, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking only the window of the specified <paramref name="parent"/> 
+	/// </summary>
+	/// <param name="parent">Parent control that triggered the message box</param>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="caption">Caption for the title bar or heading of the message box</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(Control parent, string text, string caption, MessageBoxType type = MessageBoxType.Information, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync(parent, text, caption, MessageBoxButtons.OK, type, MessageBoxDefaultButton.Default, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking input to all windows of the application until closed
+	/// </summary>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="buttons">Buttons to show on the message box</param>
+	/// <param name="defaultButton">Button to set focus to by default</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(string text, MessageBoxButtons buttons, MessageBoxType type = MessageBoxType.Information, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.Default, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync((Control)null, text, buttons, type, defaultButton, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking input to all windows of the application until closed
+	/// </summary>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="buttons">Buttons to show on the message box</param>
+	/// <param name="defaultButton">Button to set focus to by default</param>
+	/// <param name="caption">Caption for the title bar or heading of the message box</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(string text, string caption, MessageBoxButtons buttons, MessageBoxType type = MessageBoxType.Information, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.Default, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync((Control)null, text, caption, buttons, type, defaultButton, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking only the window of the specified <paramref name="parent"/> 
+	/// </summary>
+	/// <param name="parent">Parent control that triggered the message box</param>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="buttons">Buttons to show on the message box</param>
+	/// <param name="defaultButton">Button to set focus to by default</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(Control parent, string text, MessageBoxButtons buttons, MessageBoxType type = MessageBoxType.Information, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.Default, CancellationToken cancellationToken = default)
+	{
+		return ShowAsync(parent, text, null, buttons, type, defaultButton, cancellationToken);
+	}
+
+	/// <summary>
+	/// Shows a message box asynchronously, blocking only the window of the specified <paramref name="parent"/> 
+	/// </summary>
+	/// <param name="parent">Parent control that triggered the message box</param>
+	/// <param name="text">Text for the body of the message box</param>
+	/// <param name="caption">Caption for the title bar or heading of the message box</param>
+	/// <param name="type">Type of message box</param>
+	/// <param name="buttons">Buttons to show on the message box</param>
+	/// <param name="defaultButton">Button to set focus to by default</param>
+	/// <param name="cancellationToken">Token used to cancel/close the dialog.</param>
+	public static Task<DialogResult> ShowAsync(Control parent, string text, string caption, MessageBoxButtons buttons, MessageBoxType type = MessageBoxType.Information, MessageBoxDefaultButton defaultButton = MessageBoxDefaultButton.Default, CancellationToken cancellationToken = default)
+	{
+		Application.Instance.EnsureUIThread();
+		var mb = Platform.Instance.Create<IHandler>();
+		mb.Text = text;
+		mb.Caption = caption;
+		mb.Type = type;
+		mb.Buttons = buttons;
+		mb.DefaultButton = defaultButton;
+
+		return mb.ShowDialogAsync(parent, cancellationToken);
+	}
+
+	/// <summary>
 	/// Handler interface for the <see cref="MessageBox"/>
 	/// </summary>
 	public interface IHandler
@@ -229,5 +341,11 @@ public static class MessageBox
 		/// <returns>The dialog result.</returns>
 		/// <param name="parent">Optional parent. If specified, the parent's window should be blocked from input. If null, all windows should be blocked.</param>
 		DialogResult ShowDialog(Control parent);
+		/// <summary>
+		/// Shows the dialog asynchronously, completing when the dialog closes.
+		/// </summary>
+		/// <param name="parent">Optional parent. If specified, the parent's window should be blocked from input. If null, all windows should be blocked.</param>
+		/// <param name="cancellationToken">Optional cancellation token; handlers should close with a cancel response when requested.</param>
+		Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default);
 	}
 }

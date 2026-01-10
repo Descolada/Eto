@@ -48,7 +48,7 @@ namespace Eto.Test.Sections.Dialogs
 
 			layout.EndVertical();
 
-			layout.AddSeparateRow(null, ShowDialogButton(), null);
+			layout.AddSeparateRow(null, ShowDialogButton(), ShowAsyncDialogButton(), null);
 			layout.Add(null);
 
 			Content = layout;
@@ -117,6 +117,32 @@ namespace Eto.Test.Sections.Dialogs
 			};
 			return control;
 		}
+
+		Control ShowAsyncDialogButton()
+		{
+			var control = new Button { Text = "Show Dialog Async" };
+			control.Click += async (sender, e) =>
+			{
+				var caption = string.IsNullOrEmpty(MessageBoxCaption) ? null : MessageBoxCaption;
+				using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+				Task<DialogResult> task;
+				if (AttachToParent)
+					task = MessageBox.ShowAsync(this, text: MessageBoxText, caption: caption, type: MessageBoxType, buttons: MessageBoxButtons, defaultButton: MessageBoxDefaultButton, cancellationToken: cts.Token);
+				else
+					task = MessageBox.ShowAsync(text: MessageBoxText, caption: caption, type: MessageBoxType, buttons: MessageBoxButtons, defaultButton: MessageBoxDefaultButton, cancellationToken: cts.Token);
+
+				Log.Write(this, "Async MessageBox created, will cancel in 3 seconds");
+				try
+				{
+					var result = await task;
+					Log.Write(this, "Async MessageBox Result: {0}", result);
+				}
+				catch (OperationCanceledException)
+				{
+					Log.Write(this, "Async MessageBox was cancelled");
+				}
+			};
+			return control;
+		}
 	}
 }
-

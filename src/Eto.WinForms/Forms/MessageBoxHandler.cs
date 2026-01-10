@@ -24,6 +24,77 @@ namespace Eto.WinForms.Forms
 			return result.ToEto();
 		}
 
+		public Task<DialogResult> ShowDialogAsync(Control parent, CancellationToken cancellationToken = default)
+		{
+			var tcs = new TaskCompletionSource<DialogResult>();
+
+			Application.Instance.InvokeAsync(() =>
+			{
+				CancellationTokenRegistration ctr = default;
+				swf.Form cancelOwner = null;
+				try
+				{
+					var parentWindow = parent?.ParentWindow;
+					if (parentWindow?.HasFocus == false)
+						parentWindow.Focus();
+
+					var caption = Caption ?? parentWindow?.Title;
+					swf.Control ownerControl;
+
+					bool useCancelOwner = cancellationToken.CanBeCanceled || cancellationToken.IsCancellationRequested;
+					if (useCancelOwner)
+					{
+						if (cancellationToken.IsCancellationRequested)
+						{
+							tcs.TrySetCanceled();
+							ctr.Dispose();
+							return;
+						}
+						cancelOwner = new swf.Form
+						{
+							Size = Size.Empty,
+						};
+						if (parentWindow?.ControlObject is swf.Form parentForm)
+							cancelOwner.Owner = parentForm;
+
+						ownerControl = cancelOwner;
+
+						ctr = cancellationToken.Register(() =>
+						{
+							if (cancelOwner != null && !cancelOwner.IsDisposed)
+							{
+								cancelOwner.BeginInvoke(new Action(() =>
+								{
+									_ = tcs.TrySetCanceled();
+									cancelOwner.Close();
+								}));
+							}
+							else
+								_ = tcs.TrySetCanceled();
+						});
+					}
+					else
+					{
+						ownerControl = parent == null ? null : (swf.Control)parent.ControlObject;
+					}
+
+					var result = swf.MessageBox.Show(ownerControl, Text, caption, Convert(Buttons), Convert(Type), Convert(DefaultButton, Buttons));
+					tcs.TrySetResult(result.ToEto());
+				}
+				catch (Exception ex)
+				{
+					tcs.TrySetException(ex);
+				}
+				finally
+				{
+					ctr.Dispose();
+					cancelOwner?.Dispose();
+				}
+			});
+
+			return tcs.Task;
+		}
+
 		public static swf.MessageBoxDefaultButton Convert(MessageBoxDefaultButton defaultButton, MessageBoxButtons buttons)
 		{
 			switch (defaultButton)

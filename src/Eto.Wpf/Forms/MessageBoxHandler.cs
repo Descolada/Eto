@@ -63,6 +63,7 @@ namespace Eto.Wpf.Forms
 
 						if (cancellationToken.CanBeCanceled)
 						{
+							// Create a hidden owner to own the message box, so we can close it later if cancelled
 							cancelOwner = new System.Windows.Window()
 							{
 								Width = 0,

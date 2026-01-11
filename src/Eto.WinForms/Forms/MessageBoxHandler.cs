@@ -50,6 +50,7 @@ namespace Eto.WinForms.Forms
 							ctr.Dispose();
 							return;
 						}
+						// Create a hidden owner to own the message box, so we can close it later if cancelled
 						cancelOwner = new swf.Form
 						{
 							Size = sd.Size.Empty,
@@ -65,8 +66,8 @@ namespace Eto.WinForms.Forms
 							{
 								cancelOwner.BeginInvoke(new Action(() =>
 								{
-									_ = tcs.TrySetCanceled();
-									cancelOwner.Dispose();
+									if (tcs.TrySetCanceled())
+										CloseMessageBox(cancelOwner); // Just disposing of the owner causes a flicker (unlike WPF), so close the message box properly
 								}));
 							}
 							else
@@ -94,6 +95,35 @@ namespace Eto.WinForms.Forms
 			});
 
 			return tcs.Task;
+		}
+
+		static void CloseMessageBox(swf.Form owner)
+		{
+			if (owner == null || owner.IsDisposed || !owner.IsHandleCreated)
+				return;
+
+			var ownerHandle = owner.Handle;
+			IntPtr messageBoxHandle = IntPtr.Zero;
+			var threadId = Win32.GetCurrentThreadId();
+			Win32.EnumThreadProc callback = (hWnd, lParam) =>
+			{
+				if (hWnd == ownerHandle)
+					return true;
+
+				if (Win32.GetWindow(hWnd, Win32.GW.OWNER) != ownerHandle)
+					return true;
+
+				if (!Win32.IsDialogWindow(hWnd))
+					return true;
+
+				messageBoxHandle = hWnd;
+				return false;
+			};
+
+			Win32.EnumThreadWindows(threadId, callback, IntPtr.Zero);
+
+			if (messageBoxHandle != IntPtr.Zero)
+				Win32.PostMessage(messageBoxHandle, Win32.WM.CLOSE, IntPtr.Zero, IntPtr.Zero);
 		}
 
 		public static swf.MessageBoxDefaultButton Convert(MessageBoxDefaultButton defaultButton, MessageBoxButtons buttons)

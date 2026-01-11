@@ -96,6 +96,11 @@ namespace Eto
 			WNDPROC = -4
 		}
 
+		public enum GW : uint
+		{
+			OWNER = 4
+		}
+
 		[Flags]
 		public enum WS : uint
 		{
@@ -151,6 +156,7 @@ namespace Eto
 		public enum WM : uint
 		{
 			SETREDRAW = 0xB,
+			CLOSE = 0x0010,
 
 			GETDLGCODE = 0x0087,
 
@@ -326,6 +332,25 @@ namespace Eto
 		[DllImport("user32.dll")]
 		public static extern IntPtr SetActiveWindow(IntPtr hWnd);
 
+		public delegate bool EnumThreadProc(IntPtr hWnd, IntPtr lParam);
+
+		[DllImport("user32.dll")]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		public static extern bool EnumThreadWindows(uint dwThreadId, EnumThreadProc lpfn, IntPtr lParam);
+
+		[DllImport("user32.dll")]
+		public static extern IntPtr GetWindow(IntPtr hWnd, GW uCmd);
+
+		[DllImport("user32.dll", CharSet = CharSet.Auto)]
+		public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+		public static bool IsDialogWindow(IntPtr hWnd)
+		{
+			var className = new StringBuilder(256);
+			return GetClassName(hWnd, className, className.Capacity) != 0
+				&& className.ToString() == "#32770";
+		}
+
 		[DllImport("user32.dll")]
 		[return: MarshalAs(UnmanagedType.Bool)]
 		public static extern bool EnableWindow(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool bEnable);
@@ -355,6 +380,10 @@ namespace Eto
 
 		[DllImport("user32.dll")]
 		public static extern IntPtr SendMessage(IntPtr hWnd, WM wMsg, IntPtr wParam, IntPtr lParam);
+
+		[DllImport("user32.dll")]
+		[return: MarshalAs(UnmanagedType.Bool)]
+		public static extern bool PostMessage(IntPtr hWnd, WM wMsg, IntPtr wParam, IntPtr lParam);
 
 		[DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
 		public static extern IntPtr SendMessage(IntPtr hWnd, WM msg, IntPtr wParam, [MarshalAs(UnmanagedType.LPWStr)] string lParam);

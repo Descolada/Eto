@@ -9,10 +9,11 @@ namespace Eto.Shared.Drawing
 	{
 		public string FamilyName { get; private set; }
 		public string SubFamilyName { get; private set; }
+		public string PostScriptName { get; private set; }
 		public string TypographicFamilyName { get; private set; }
 		public string TypographicSubFamilyName { get; private set; }
 		public string[] VariationSubFamilyNames { get; private set; }
-		// public string[] VariationPostscriptNames { get; private set; }
+		// public string[] VariationPostScriptNames { get; private set; }
 
 		public static IEnumerable<OpenTypeFontInfo> FromFile(string fontFilePath)
 		{
@@ -68,6 +69,7 @@ namespace Eto.Shared.Drawing
 			// https://docs.microsoft.com/en-ca/typography/opentype/spec/name#name-ids
 			info.FamilyName = GetNameValue(1);
 			info.SubFamilyName = GetNameValue(2);
+			info.PostScriptName = GetNameValue(6);
 			info.TypographicFamilyName = GetNameValue(16);
 			info.TypographicSubFamilyName = GetNameValue(17);
 
@@ -77,7 +79,7 @@ namespace Eto.Shared.Drawing
 				var variableHeader = new OTFontVariationsHeader(fontVariationsTable, stream);
 				var variations = variableHeader.ReadInstanceRecords(stream);
 				info.VariationSubFamilyNames = variations.Select(r => GetNameValue(r.subfamilyNameID)).ToArray();
-				// info.VariationPostscriptNames = variations.Where(r => r.postScriptNameID != 0xFFFF).Select(r => GetNameValue(r.postScriptNameID)).ToArray();
+				// info.VariationPostScriptNames = variations.Where(r => r.postScriptNameID != 0xFFFF).Select(r => GetNameValue(r.postScriptNameID)).ToArray();
 			}
 
 			return info;
@@ -87,7 +89,7 @@ namespace Eto.Shared.Drawing
 
 		static UInt16 ReadUInt16(Stream stream)
 		{
-			stream.Read(bufferUInt16, 0, bufferUInt16.Length);
+			stream.ReadExactly(bufferUInt16, 0, bufferUInt16.Length);
 			Array.Reverse(bufferUInt16);
 			return BitConverter.ToUInt16(bufferUInt16, 0);
 		}
@@ -95,7 +97,7 @@ namespace Eto.Shared.Drawing
 		static byte[] bufferUInt32 = new byte[4];
 		static unsafe UInt32 ReadUInt32(Stream stream)
 		{
-			stream.Read(bufferUInt32, 0, bufferUInt32.Length);
+			stream.ReadExactly(bufferUInt32, 0, bufferUInt32.Length);
 			Array.Reverse(bufferUInt32);
 			return BitConverter.ToUInt32(bufferUInt32, 0);
 		}
@@ -113,7 +115,7 @@ namespace Eto.Shared.Drawing
 			{
 				var pos = stream.Position;
 				var ttcTag = new byte[4];
-				stream.Read(ttcTag, 0, ttcTag.Length);
+				stream.ReadExactly(ttcTag, 0, ttcTag.Length);
 				if (!ttcTag.SequenceEqual(ttcTagIdentifier))
 				{
 					stream.Position = pos;
@@ -187,7 +189,7 @@ namespace Eto.Shared.Drawing
 
 			public OTTableRecord(Stream stream)
 			{
-				stream.Read(tableTag, 0, tableTag.Length);
+				stream.ReadExactly(tableTag, 0, tableTag.Length);
 				checksum = ReadUInt32(stream);
 				offset = ReadUInt32(stream);
 				length = ReadUInt32(stream);
@@ -251,7 +253,7 @@ namespace Eto.Shared.Drawing
 				stream.Position = absoluteOffset;
 
 				var stringBuffer = new byte[length];
-				stream.Read(stringBuffer, 0, length);
+				stream.ReadExactly(stringBuffer, 0, length);
 
 				var isBigEndian = platformID == 3 || (platformID == 0 && encodingID == 1 || encodingID == 3);
 				var encoding = isBigEndian ? Encoding.BigEndianUnicode : Encoding.UTF8;
@@ -290,12 +292,12 @@ namespace Eto.Shared.Drawing
 			public IEnumerable<OTFontVariationsInstanceRecord> ReadInstanceRecords(Stream stream)
 			{
 				var pos = _recordsOffset + axisCount * axisSize;
-				bool includePostscriptName = instanceSize >= axisCount * 32 + 6;
+				bool includePostScriptName = instanceSize >= axisCount * 32 + 6;
 
 				for (int i = 0; i < instanceCount; i++)
 				{
 					stream.Position = pos + i * instanceSize;
-					yield return new OTFontVariationsInstanceRecord(stream, axisCount, includePostscriptName);
+					yield return new OTFontVariationsInstanceRecord(stream, axisCount, includePostScriptName);
 				}
 			}
 		}
@@ -307,7 +309,7 @@ namespace Eto.Shared.Drawing
 			// public UInt32[] coordinates; // Fixed point 16.16
 			public UInt16 postScriptNameID;
 			
-			public OTFontVariationsInstanceRecord(Stream stream, int axisCount, bool includePostscriptName)
+			public OTFontVariationsInstanceRecord(Stream stream, int axisCount, bool includePostScriptName)
 			{
 				subfamilyNameID = ReadUInt16(stream);
 				flags = ReadUInt16(stream);
@@ -318,7 +320,7 @@ namespace Eto.Shared.Drawing
 				// {
 				// 	coordinates[i] = ReadUInt32(stream);
 				// }
-				if (includePostscriptName)
+				if (includePostScriptName)
 				{
 					stream.Position += 32 * axisCount;
 					postScriptNameID = ReadUInt16(stream);

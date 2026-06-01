@@ -1,7 +1,7 @@
 using Eto.GtkSharp.Drawing;
 namespace Eto.GtkSharp.Forms
 {
-	public class ClipboardHandler : WidgetHandler<Gtk.Clipboard, Clipboard>, Clipboard.IHandler
+	public class ClipboardHandler : WidgetHandler<Gtk.Clipboard, Clipboard, Clipboard.ICallback>, Clipboard.IHandler
 	{
 		delegate void GetClipboardData(ClipboardData data,Gtk.SelectionData selection);
 
@@ -34,6 +34,10 @@ namespace Eto.GtkSharp.Forms
 		Gtk.TargetList targets = new Gtk.TargetList();
 
 		readonly List<ClipboardData> clipboard = new List<ClipboardData>();
+		bool changedAttached;
+#if NET6_0_OR_GREATER
+		bool changedAttachedToWayland;
+#endif
 
 		public ClipboardHandler()
 		{
@@ -57,6 +61,82 @@ namespace Eto.GtkSharp.Forms
 #else
 		static bool UseWayland => false;
 #endif
+
+		public override void AttachEvent(string id)
+		{
+			switch (id)
+			{
+				case Clipboard.ChangedEvent:
+					if (changedAttached)
+						break;
+#if NET6_0_OR_GREATER
+					if (UseWayland)
+					{
+						WaylandClipboard.SelectionChanged += Connector.HandleWaylandSelectionChanged;
+						changedAttachedToWayland = true;
+					}
+					else
+#endif
+						Control.OwnerChange += Connector.HandleOwnerChange;
+					changedAttached = true;
+					break;
+				default:
+					base.AttachEvent(id);
+					break;
+			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing && changedAttached)
+			{
+#if NET6_0_OR_GREATER
+				if (changedAttachedToWayland)
+				{
+					WaylandClipboard.SelectionChanged -= Connector.HandleWaylandSelectionChanged;
+					changedAttachedToWayland = false;
+				}
+				else
+#endif
+					Control.OwnerChange -= Connector.HandleOwnerChange;
+				changedAttached = false;
+			}
+			base.Dispose(disposing);
+		}
+
+		protected new ClipboardConnector Connector => (ClipboardConnector)base.Connector;
+
+		protected override WeakConnector CreateConnector()
+		{
+			return new ClipboardConnector();
+		}
+
+		protected class ClipboardConnector : WeakConnector
+		{
+			public new ClipboardHandler Handler => (ClipboardHandler)base.Handler;
+
+			public void HandleOwnerChange(object sender, Gtk.OwnerChangeArgs e)
+			{
+				var handler = Handler;
+				if (handler != null)
+					handler.Callback.OnChanged(handler.Widget, EventArgs.Empty);
+			}
+
+#if NET6_0_OR_GREATER
+			public void HandleWaylandSelectionChanged()
+			{
+				var handler = Handler;
+				if (handler == null)
+					return;
+
+				var application = Eto.Forms.Application.Instance;
+				if (application != null)
+					application.AsyncInvoke(() => handler.Callback.OnChanged(handler.Widget, EventArgs.Empty));
+				else
+					handler.Callback.OnChanged(handler.Widget, EventArgs.Empty);
+			}
+#endif
+		}
 
 		void Update()
 		{

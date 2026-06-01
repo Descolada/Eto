@@ -219,6 +219,7 @@ namespace Eto.Mac.Forms
 		public static readonly IntPtr selArrangeInFront = Selector.GetHandle("arrangeInFront:");
 		public static readonly IntPtr selPerformMiniaturize = Selector.GetHandle("performMiniaturize:");
 		public static readonly IntPtr selUpdateTrackingAreas = Selector.GetHandle("updateTrackingAreas");
+		public static readonly IntPtr selViewDidChangeEffectiveAppearance = Selector.GetHandle("viewDidChangeEffectiveAppearance");
 		public static readonly Dictionary<string, IntPtr> systemActionSelectors = new Dictionary<string, IntPtr>
 		{
 			{ "cut", selCut },
@@ -450,6 +451,17 @@ namespace Eto.Mac.Forms
 			return effect;
 		}
 
+		internal static MarshalDelegates.Action_IntPtr_IntPtr TriggerThemeChanged_Delegate = TriggerThemeChanged;
+		static void TriggerThemeChanged(IntPtr sender, IntPtr sel)
+		{
+			var obj = Runtime.GetNSObject(sender);
+			if (MacBase.GetHandler(obj) is IMacViewHandler handler)
+			{
+				handler.Callback.OnThemeChanged(handler.Widget, EventArgs.Empty);
+			}
+			Messaging.void_objc_msgSendSuper(obj.SuperHandle, sel);
+		}
+
 		internal static MarshalDelegates.Action_IntPtr_IntPtr_IntPtr TriggerDraggingExited_Delegate = TriggerDraggingExited;
 		static void TriggerDraggingExited(IntPtr sender, IntPtr sel, IntPtr draggingInfoPtr)
 		{
@@ -473,6 +485,10 @@ namespace Eto.Mac.Forms
 			{
 				handler.TextInputCancelled = false;
 				var text = (string)Messaging.GetNSObject<NSString>(textPtr);
+				if (handler is IMacTextInputHandler textInputHandler)
+				{
+					textInputHandler.FinishComposition();
+				}
 				var args = new TextInputEventArgs(text);
 				handler.Callback.OnTextInput(handler.Widget, args);
 				if (args.Cancel)
@@ -927,6 +943,9 @@ namespace Eto.Mac.Forms
 					break;
 				case Eto.Forms.Control.DragEndEvent:
 					// handled in EtoDragSource, TreeGridViewHandler.EtoDragSource, and GridViewHandler.EtoDragSource
+					break;
+				case Eto.Forms.Control.ThemeChangedEvent:
+					AddMethod(MacView.selViewDidChangeEffectiveAppearance, MacView.TriggerThemeChanged_Delegate, "v@:@");
 					break;
 				default:
 					base.AttachEvent(id);
@@ -1860,4 +1879,3 @@ namespace Eto.Mac.Forms
 #endif
 	}
 }
-

@@ -90,6 +90,13 @@ namespace Eto.WinForms.Drawing
 			}
 		}
 
+		Win32.OUTLINETEXTMETRICW? outlineTextMetrics;
+		Win32.OUTLINETEXTMETRICW OutlineTextMetrics => outlineTextMetrics ?? (outlineTextMetrics = Control.GetOutlineTextMetrics()) ?? default;
+
+		public float UnderlinePosition => -OutlineTextMetrics.otmsUnderscorePosition;
+
+		public float UnderlineThickness => OutlineTextMetrics.otmsUnderscoreSize;
+
 		public float LineHeight => Size * Control.FontFamily.GetLineSpacing(Control.Style) / Control.FontFamily.GetEmHeight(Control.Style);
 
 		public float Size => Control.SizeInPoints;
@@ -106,7 +113,11 @@ namespace Eto.WinForms.Drawing
 			if (UseCompatibleTextRendering)
 			{
 				if (measureGraphics == null)
-					measureGraphics = sd.Graphics.FromImage(new sd.Bitmap(1, 1));
+				{
+					var bmp = new sd.Bitmap(1, 1);
+					bmp.SetResolution(96, 96);
+					measureGraphics = sd.Graphics.FromImage(bmp);
+				}
 
 				sd.CharacterRange[] ranges = { new sd.CharacterRange(0, text.Length) };
 				var stringFormat = GraphicsHandler.DefaultStringFormat;

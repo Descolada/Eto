@@ -13,8 +13,18 @@ namespace Eto.GtkSharp.Forms
 			Uris
 		}
 
+		enum ClipboardEntryKind
+		{
+			Exact,
+			Text,
+			Image,
+			Uris
+		}
+
 		class ClipboardData
 		{
+			public ClipboardEntryKind Kind { get; set; }
+
 			public ClipboardEntryKind Kind { get; set; }
 
 			public string Type { get; set; }
@@ -78,7 +88,13 @@ namespace Eto.GtkSharp.Forms
 		}
 
 		void RebuildTargets()
+		void RebuildTargets()
 		{
+			targets = new Gtk.TargetList();
+			for (var i = 0; i < clipboard.Count; i++)
+			{
+				clipboard[i].AddTargets?.Invoke(targets, (uint)i);
+			}
 			targets = new Gtk.TargetList();
 			for (var i = 0; i < clipboard.Count; i++)
 			{
@@ -89,14 +105,21 @@ namespace Eto.GtkSharp.Forms
 		void SetEntry(ClipboardEntryKind kind, string type, object data, GetClipboardData getData, Action<Gtk.TargetList, uint> addTargets)
 		{
 			clipboard.RemoveAll(entry => entry.Kind == kind && (kind != ClipboardEntryKind.Exact || StringComparer.Ordinal.Equals(entry.Type, type)));
+		void SetEntry(ClipboardEntryKind kind, string type, object data, GetClipboardData getData, Action<Gtk.TargetList, uint> addTargets)
+		{
+			clipboard.RemoveAll(entry => entry.Kind == kind && (kind != ClipboardEntryKind.Exact || StringComparer.Ordinal.Equals(entry.Type, type)));
 			clipboard.Add(new ClipboardData
 			{
 				Kind = kind,
 				Type = type,
+				Kind = kind,
+				Type = type,
 				Data = data,
 				GetClipboardData = getData,
+				AddTargets = addTargets,
 				AddTargets = addTargets
 			});
+			RebuildTargets();
 			RebuildTargets();
 			Update();
 		}
@@ -187,6 +210,13 @@ namespace Eto.GtkSharp.Forms
 				var pixbuf = value.ToGdk();
 				if (pixbuf == null)
 					throw new NotSupportedException();
+				SetEntry(
+					ClipboardEntryKind.Image,
+					null,
+					pixbuf,
+					(data, selection) => selection.SetPixbuf(data.Data as Gdk.Pixbuf),
+					(targetList, info) => targetList.AddImageTargets(info, false)
+				);
 				SetEntry(
 					ClipboardEntryKind.Image,
 					null,
@@ -402,6 +432,13 @@ namespace Eto.GtkSharp.Forms
 				}
 #endif
 				var uris = value?.Select(r => r.AbsoluteUri).ToArray();
+				SetEntry(
+					ClipboardEntryKind.Uris,
+					"text/uri-list",
+					value,
+					(data, selection) => selection.SetSelectedUris2(uris),
+					(targetList, info) => targetList.Add("text/uri-list", 0, info)
+				);
 				SetEntry(
 					ClipboardEntryKind.Uris,
 					"text/uri-list",

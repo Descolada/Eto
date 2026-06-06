@@ -71,7 +71,8 @@ public class ApplicationHandler : WidgetHandler<mux.Application, Application, Ap
 
 	public void Quit()
 	{
-		Control.Exit();
+		foreach (var window in Widget.Windows.ToList())
+			window.Close();
 	}
 
 	public void Restart()

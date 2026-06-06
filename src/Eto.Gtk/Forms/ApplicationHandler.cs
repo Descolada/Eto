@@ -335,7 +335,7 @@ namespace Eto.GtkSharp.Forms
 		public void Quit()
 		{
 			var args = new CancelEventArgs();
-			var mainForm = Widget.MainForm != null ? Widget.MainForm.Handler as IGtkWindow : null;
+			var mainForm = Widget.MainForm?.Handler as IGtkWindow;
 			if (mainForm != null)
 				args.Cancel = !mainForm.CloseWindow(ce => Callback.OnTerminating(Widget, ce));
 			else
@@ -343,7 +343,8 @@ namespace Eto.GtkSharp.Forms
 
 			if (!args.Cancel)
 			{
-				GLib.ExceptionManager.UnhandledException -= OnUnhandledException;
+				foreach (var window in Widget.Windows.Where(w => !ReferenceEquals(w, Widget.MainForm)).ToList())
+					window.Close();
 				Gtk.Application.Quit();
 			}
 		}

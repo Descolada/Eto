@@ -5,7 +5,7 @@ namespace Eto.WinForms.Forms
 	{
 		string badgeLabel;
 		bool attached;
-		bool quitting;
+		bool _optionsSet;
 		readonly Thread mainThread;
 		SynchronizationContext context;
 		swf.ApplicationContext applicationContext = new swf.ApplicationContext();
@@ -107,17 +107,16 @@ namespace Eto.WinForms.Forms
 		{
 			if (!attached)
 			{
-				if (!EtoEnvironment.Platform.IsMono)
-					swf.Application.DoEvents();
-
-				SetOptions();
+				if (!_optionsSet)
+				{
+					if (!EtoEnvironment.Platform.IsMono)
+						swf.Application.DoEvents();
+					SetOptions();
+					_optionsSet = true;
+				}
 
 				Callback.OnInitialized(Widget, EventArgs.Empty);
-
-				if (!quitting)
-				{
-					swf.Application.Run(applicationContext);
-				}
+				swf.Application.Run(applicationContext);
 			}
 			else
 			{
@@ -234,13 +233,15 @@ namespace Eto.WinForms.Forms
 
 		public void Quit()
 		{
-			quitting = true;
-			swf.Application.Exit();
-			if (IsEventHandled(Application.UnhandledExceptionEvent))
+			if (Thread.CurrentThread != mainThread)
 			{
-				swf.Application.ThreadException -= OnUnhandledThreadException;
-				AppDomain.CurrentDomain.UnhandledException -= OnCurrentDomainUnhandledException;
+				Invoke(Quit);
+				return;
 			}
+			foreach (swf.Form form in swf.Application.OpenForms.Cast<swf.Form>().ToList())
+				form.Close();
+			if (swf.Application.OpenForms.Count == 0)
+				applicationContext?.ExitThread();
 		}
 
 		public bool QuitIsSupported { get { return true; } }

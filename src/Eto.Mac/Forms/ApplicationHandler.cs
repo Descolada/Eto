@@ -7,6 +7,7 @@ namespace Eto.Mac.Forms
 	{
 		bool _attached;
 		bool? _activateOnStartup;
+		bool _hasLaunched;
 
 		internal static bool QueueResizing { get; set; }
 
@@ -196,23 +197,33 @@ namespace Eto.Mac.Forms
 		{
 			if (!_attached)
 			{
-				if (EnableNativeCrashReport)
-					CrashReporter.Attach();
+				if (!_hasLaunched)
+				{
+					if (EnableNativeCrashReport)
+						CrashReporter.Attach();
 
 #if Mac64
-				// convert objective-c exceptions into .NET exceptions
-				if (EnableNativeExceptionTranslation)
-					NSSetUncaughtExceptionHandler(UncaughtExceptionHandler);
+					// convert objective-c exceptions into .NET exceptions
+					if (EnableNativeExceptionTranslation)
+						NSSetUncaughtExceptionHandler(UncaughtExceptionHandler);
 #endif
 
+					EtoBundle.Init();
 
-				EtoBundle.Init();
+					EtoFontManager.Install();
 
-				EtoFontManager.Install();
+					if (Control.Delegate == null)
+						Control.Delegate = AppDelegate ?? new AppDelegate();
 
-				if (Control.Delegate == null)
-					Control.Delegate = AppDelegate ?? new AppDelegate();
-				NSApplication.Main(new string[0]);
+					// FinishLaunching fires applicationDidFinishLaunching: on the delegate,
+					// which calls Initialize() and raises Application.Initialized.
+					Control.FinishLaunching();
+					_hasLaunched = true;
+				}
+
+				// Run the AppKit event loop. Unlike NSApplicationMain this can be called
+				// multiple times after Stop() stops the current loop.
+				Control.Run();
 			}
 			else
 				Initialize(Control.Delegate as NSApplicationDelegate);
@@ -231,7 +242,34 @@ namespace Eto.Mac.Forms
 
 		public void Quit()
 		{
-			Control.Terminate((NSObject)AppDelegate ?? Control);
+			var args = new CancelEventArgs();
+			var mainForm = Widget.MainForm?.Handler as IMacWindow;
+			if (mainForm != null)
+				args.Cancel = !mainForm.CloseWindow(ce => Callback.OnTerminating(Widget, ce));
+			else
+				Callback.OnTerminating(Widget, args);
+
+			if (!args.Cancel)
+			{
+				foreach (var window in Widget.Windows.ToList())
+					window.Close();
+				Stop();
+			}
+		}
+
+		void Stop()
+		{
+			if (!NSThread.IsMain)
+			{
+				AsyncInvoke(Stop);
+				return;
+			}
+
+			// NSApp.Stop sets a flag; PostEvent ensures the loop processes it immediately.
+			Control.Stop(Control);
+			Control.PostEvent(
+				NSEvent.OtherEvent(NSEventType.ApplicationDefined, new CGPoint(), (NSEventModifierMask)0, 0.0, 0, null, 0, 0, 0),
+				atStart: true);
 		}
 
 		public bool QuitIsSupported { get { return true; } }

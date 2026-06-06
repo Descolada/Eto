@@ -6,10 +6,11 @@ namespace Eto.Wpf.Forms;
 public class ApplicationHandler : WidgetHandler<sw.Application, Application, Application.ICallback>, Application.IHandler
 {
 	bool _attached;
-	bool _shutdown;
 	string _badgeLabel;
 	List<FormHandler> _delayShownWindows;
 	Dispatcher _dispatcher;
+	DispatcherFrame _runFrame;
+	sw.Window _trackedMainWindow;
 	bool? _isActive;
 	ThemeStyle? _lastDetectedTheme;
 
@@ -50,7 +51,6 @@ public class ApplicationHandler : WidgetHandler<sw.Application, Application, App
 		{
 			Control = new sw.Application { ShutdownMode = sw.ShutdownMode.OnExplicitShutdown };
 			sw.Forms.Application.EnableVisualStyles();
-			Control.Startup += (s, e) => HandleStartup();
 		}
 		else
 		{
@@ -241,27 +241,26 @@ public class ApplicationHandler : WidgetHandler<sw.Application, Application, App
 
 	public void Quit()
 	{
-		// Clean up system theme change listener
-		try
-		{
-			SystemEvents.UserPreferenceChanged -= OnSystemThemeChanged;
-		}
-		catch
-		{
-			// Ignore any errors during cleanup
-		}
-
 		bool cancel = false;
-		foreach (sw.Window window in Control.Windows)
+		foreach (sw.Window window in Control.Windows.Cast<sw.Window>().ToList())
 		{
 			window.Close();
 			cancel |= window.IsVisible;
 		}
 		if (!cancel)
-		{
-			Control.Shutdown();
-			_shutdown = true;
-		}
+			Stop();
+	}
+
+	void Stop()
+	{
+		var runFrame = _runFrame;
+		if (runFrame == null)
+			return;
+
+		if (_dispatcher.CheckAccess())
+			runFrame.Continue = false;
+		else
+			_dispatcher.BeginInvoke(() => runFrame.Continue = false);
 	}
 
 	public bool QuitIsSupported { get { return true; } }
@@ -352,16 +351,23 @@ public class ApplicationHandler : WidgetHandler<sw.Application, Application, App
 		Callback.OnInitialized(Widget, EventArgs.Empty);
 		if (!_attached)
 		{
-			if (_shutdown)
-				return;
+			if (!IsStarted)
+				HandleStartup();
 			if (Widget.MainForm != null)
 			{
-				Control.ShutdownMode = sw.ShutdownMode.OnMainWindowClose;
-				Control.Run((sw.Window)Widget.MainForm.ControlObject);
+				var mainWindow = (sw.Window)Widget.MainForm.ControlObject;
+				if (!mainWindow.IsVisible)
+					mainWindow.Show();
 			}
-			else
+
+			_runFrame = new DispatcherFrame();
+			try
 			{
-				Control.Run();
+				Dispatcher.PushFrame(_runFrame);
+			}
+			finally
+			{
+				_runFrame = null;
 			}
 		}
 	}
@@ -374,7 +380,26 @@ public class ApplicationHandler : WidgetHandler<sw.Application, Application, App
 
 	public void OnMainFormChanged()
 	{
-		sw.Application.Current.MainWindow = Widget.MainForm.ToNative();
+		if (_trackedMainWindow != null)
+		{
+			_trackedMainWindow.Closed -= OnMainWindowClosed;
+			_trackedMainWindow = null;
+		}
+
+		var nativeWindow = Widget.MainForm?.ToNative() as sw.Window;
+		sw.Application.Current.MainWindow = nativeWindow;
+
+		if (nativeWindow != null)
+		{
+			_trackedMainWindow = nativeWindow;
+			nativeWindow.Closed += OnMainWindowClosed;
+		}
+	}
+
+	void OnMainWindowClosed(object sender, EventArgs e)
+	{
+		_trackedMainWindow = null;
+		Stop();
 	}
 
 	public void Restart()

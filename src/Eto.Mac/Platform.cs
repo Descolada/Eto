@@ -273,7 +273,9 @@ namespace Eto.Mac
 				if (bundle == null)
 					return false;
 				if (!bundle.BundlePath.EndsWith(".app", StringComparison.Ordinal))
-					return false;
+					// Allow non-bundle hosts (e.g. dotnet testhost) when NSApplication has
+					// already been initialized explicitly on the main thread by the caller.
+					return Dlfcn.GetIntPtr(Messaging.AppKitHandle, "NSApp") != IntPtr.Zero;
 				if (!bundle.IsLoaded)
 					return false;
 				return true;

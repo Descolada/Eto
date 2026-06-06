@@ -265,6 +265,13 @@ namespace Eto.Mac.Forms
 				return;
 			}
 
+			if (Control.ModalWindow != null)
+			{
+				Control.AbortModal();
+				Control.BeginInvokeOnMainThread(Stop);
+				return;
+			}
+
 			// NSApp.Stop sets a flag; PostEvent ensures the loop processes it immediately.
 			Control.Stop(Control);
 			Control.PostEvent(

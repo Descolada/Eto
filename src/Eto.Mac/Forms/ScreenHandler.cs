@@ -146,8 +146,7 @@ namespace Eto.Mac.Forms
 						CaptureImageWithFilterSelector,
 						filter,
 						configuration,
-						block),
-					rect.Size);
+						block));
 			}
 			finally
 			{
@@ -169,8 +168,7 @@ namespace Eto.Mac.Forms
 					ScreenshotManagerClass,
 					CaptureImageInRectSelector,
 					rect.ToNS(),
-					block),
-				rect.Size);
+					block));
 		}
 
 		Image CaptureImageWithCoreGraphics(RectangleF rect)
@@ -186,10 +184,11 @@ namespace Eto.Mac.Forms
 #else
 			using var cgimage = cgimagePtr == IntPtr.Zero ? null : new CGImage(cgimagePtr);
 #endif
-			return cgimage == null ? null : new Icon(new IconHandler(new NSImage(cgimage, rect.Size.ToNS())));
+			// Pixel-sized for the same reason as CaptureImage above.
+			return cgimage == null ? null : new Icon(new IconHandler(new NSImage(cgimage, new CGSize(cgimage.Width, cgimage.Height))));
 		}
 
-		static unsafe Bitmap CaptureImage(Action<IntPtr> invoke, SizeF imageSize)
+		static unsafe Bitmap CaptureImage(Action<IntPtr> invoke)
 		{
 			Bitmap bitmap = null;
 			using var completed = new ManualResetEventSlim();
@@ -204,7 +203,12 @@ namespace Eto.Mac.Forms
 #else
 						using var cgimage = new CGImage(image);
 #endif
-						bitmap = new Bitmap(new BitmapHandler(new NSImage(cgimage, imageSize.ToNS())));
+						// Size the NSImage in pixels rather than the captured rect's points.
+						// On Retina displays the CGImage holds physical pixels; a point-sized
+						// NSImage makes Lock()/pixel access silently downsample 2x (EnsureRep
+						// re-renders at point size), while Save() writes the full pixels.
+						var imageSize = new CGSize(cgimage.Width, cgimage.Height);
+						bitmap = new Bitmap(new BitmapHandler(new NSImage(cgimage, imageSize)));
 					}
 				}
 				catch

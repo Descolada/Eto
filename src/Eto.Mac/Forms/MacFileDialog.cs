@@ -30,7 +30,7 @@ namespace Eto.Mac.Forms
 		
 	}
 
-	public abstract class MacFileDialog<TControl, TWidget> : WidgetHandler<TControl, TWidget>, FileDialog.IHandler, IMacFileDialog
+	public abstract class MacFileDialog<TControl, TWidget> : WidgetHandler<TControl, TWidget>, FileDialog.IHandler, CommonDialog.ICancellableHandler, IMacFileDialog
      where TControl: NSSavePanel
      where TWidget: FileDialog
 	{
@@ -151,6 +151,11 @@ namespace Eto.Mac.Forms
 				fileName = null;
 
 			return ret == 1 ? DialogResult.Ok : DialogResult.Cancel;
+		}
+
+		public void CancelDialog()
+		{
+			NSApplication.SharedApplication.StopModalWithCode((nint)NSModalResponse.Cancel);
 		}
 
 		public void InsertFilter(int index, FileFilter filter)

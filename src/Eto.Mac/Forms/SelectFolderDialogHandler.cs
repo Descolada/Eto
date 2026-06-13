@@ -1,6 +1,6 @@
 namespace Eto.Mac.Forms
 {
-	public class SelectFolderDialogHandler : WidgetHandler<NSOpenPanel, SelectFolderDialog>, SelectFolderDialog.IHandler
+	public class SelectFolderDialogHandler : WidgetHandler<NSOpenPanel, SelectFolderDialog>, SelectFolderDialog.IHandler, CommonDialog.ICancellableHandler
 	{
 		protected override NSOpenPanel CreateControl()
 		{
@@ -21,6 +21,11 @@ namespace Eto.Mac.Forms
 			MacView.InMouseTrackingLoop = false;
 			var ret = Control.RunModal();
 			return ret == 1 ? DialogResult.Ok : DialogResult.Cancel;
+		}
+
+		public void CancelDialog()
+		{
+			NSApplication.SharedApplication.StopModalWithCode((nint)NSModalResponse.Cancel);
 		}
 
 		public string Title

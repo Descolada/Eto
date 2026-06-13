@@ -70,6 +70,15 @@ public class Dialog<T> : Dialog
 	}
 
 	/// <summary>
+	/// Shows the dialog modally asynchronously until it is closed or cancelled.
+	/// </summary>
+	public new async Task<T> ShowModalAsync(CancellationToken cancellationToken)
+	{
+		await base.ShowModalAsync(cancellationToken);
+		return Result;
+	}
+
+	/// <summary>
 	/// Shows the dialog and blocks until the user closes the dialog
 	/// </summary>
 	/// <remarks>
@@ -96,6 +105,15 @@ public class Dialog<T> : Dialog
 	{
 		return base.ShowModalAsync(owner)
 			.ContinueWith(t => Result, TaskContinuationOptions.OnlyOnRanToCompletion);
+	}
+
+	/// <summary>
+	/// Shows the dialog modally asynchronously with the specified owner until it is closed or cancelled.
+	/// </summary>
+	public new async Task<T> ShowModalAsync(Control owner, CancellationToken cancellationToken)
+	{
+		await base.ShowModalAsync(owner, cancellationToken);
+		return Result;
 	}
 
 	/// <summary>
@@ -235,6 +253,15 @@ public class Dialog : Window
 	}
 
 	/// <summary>
+	/// Shows the dialog modally asynchronously with the specified owner until it is closed or cancelled.
+	/// </summary>
+	public Task ShowModalAsync(Control owner, CancellationToken cancellationToken)
+	{
+		Owner = owner != null ? owner.ParentWindow : null;
+		return ShowModalAsync(cancellationToken);
+	}
+
+	/// <summary>
 	/// Shows the dialog modally asynchronously
 	/// </summary>
 	public Task ShowModalAsync()
@@ -248,6 +275,18 @@ public class Dialog : Window
 		}
 
 		return Handler.ShowModalAsync();
+	}
+
+	/// <summary>
+	/// Shows the dialog modally asynchronously until it is closed or cancelled.
+	/// </summary>
+	public async Task ShowModalAsync(CancellationToken cancellationToken)
+	{
+		cancellationToken.ThrowIfCancellationRequested();
+		var showTask = ShowModalAsync();
+		using var registration = cancellationToken.Register(() => Application.Instance.AsyncInvoke(Close));
+		await showTask;
+		cancellationToken.ThrowIfCancellationRequested();
 	}
 
 	/// <summary>

@@ -11,6 +11,7 @@ namespace Eto.GtkSharp.Forms
 		internal static List<string> TempFiles = new List<string>();
 
 		bool attached;
+		bool quitting;
 		Gtk.StatusIcon statusIcon;
 		readonly List<ManualResetEvent> invokeResetEvents = new List<ManualResetEvent>();
 
@@ -335,18 +336,30 @@ namespace Eto.GtkSharp.Forms
 		public void Quit()
 		{
 			var args = new CancelEventArgs();
-			var mainForm = Widget.MainForm != null ? Widget.MainForm.Handler as IGtkWindow : null;
-			if (mainForm != null)
-				args.Cancel = !mainForm.CloseWindow(ce => Callback.OnTerminating(Widget, ce));
-			else
-				Callback.OnTerminating(Widget, args);
+			Callback.OnTerminating(Widget, args);
+			if (args.Cancel)
+				return;
 
-			if (!args.Cancel)
+			quitting = true;
+			try
 			{
-				GLib.ExceptionManager.UnhandledException -= OnUnhandledException;
-				Gtk.Application.Quit();
+				foreach (var window in Widget.Windows.OrderBy(w => ReferenceEquals(w, Widget.MainForm)).ToList())
+				{
+					window.Close();
+					if (Widget.Windows.Contains(window))
+						break;
+				}
 			}
+			finally
+			{
+				quitting = false;
+			}
+
+			if (!Widget.Windows.Any())
+				Gtk.Application.Quit();
 		}
+
+		internal bool IsQuitting => quitting;
 
 		public bool QuitIsSupported { get { return true; } }
 

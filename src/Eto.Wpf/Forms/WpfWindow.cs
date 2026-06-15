@@ -325,6 +325,7 @@ namespace Eto.Wpf.Forms
 			bool willShutDown = false;
 			if (sw.Application.Current.Dispatcher == Dispatcher.CurrentDispatcher)
 			{
+				var app = ApplicationHandler.Instance;
 				willShutDown =
 					(
 						sw.Application.Current.ShutdownMode == sw.ShutdownMode.OnLastWindowClose
@@ -333,14 +334,16 @@ namespace Eto.Wpf.Forms
 					|| (
 						sw.Application.Current.ShutdownMode == sw.ShutdownMode.OnMainWindowClose
 						&& sw.Application.Current.MainWindow == Control
-					);
+					)
+					|| app?.IsMainWindow(Control) == true;
 			}
 
 			if (!args.Cancel && willShutDown)
 			{
 				// last window closing, so call OnTerminating to let the app abort terminating
 				var app = ((ApplicationHandler)Application.Instance.Handler);
-				app.Callback.OnTerminating(app.Widget, args);
+				if (!app.IsQuitting)
+					app.Callback.OnTerminating(app.Widget, args);
 			}
 			e.Cancel = args.Cancel;
 			IsApplicationClosing = !e.Cancel && willShutDown;

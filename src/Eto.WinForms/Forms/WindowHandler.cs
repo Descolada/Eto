@@ -300,7 +300,8 @@ namespace Eto.WinForms.Forms
 				|| e.CloseReason == swf.CloseReason.WindowsShutDown)
 			{
 				var app = ((ApplicationHandler)Application.Instance.Handler);
-				app.Callback.OnTerminating(app.Widget, args);
+				if (!app.IsQuitting)
+					app.Callback.OnTerminating(app.Widget, args);
 			}
 
 			e.Cancel = args.Cancel;

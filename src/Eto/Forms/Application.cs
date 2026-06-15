@@ -406,11 +406,14 @@ public class Application : Widget
 	/// <param name="mainForm">Main form for the application.</param>
 	public virtual void Run(Form mainForm)
 	{
-		Initialized += (sender, e) =>
+		EventHandler<EventArgs> initialized = null;
+		initialized = (sender, e) =>
 		{
+			Initialized -= initialized;
 			MainForm = mainForm;
 			MainForm.Show();
 		};
+		Initialized += initialized;
 		Handler.Run();
 	}
 
@@ -423,11 +426,14 @@ public class Application : Widget
 	/// <param name="dialog">Dialog to show for the application.</param>
 	public virtual void Run(Dialog dialog)
 	{
-		Initialized += (sender, e) =>
+		EventHandler<EventArgs> initialized = null;
+		initialized = (sender, e) =>
 		{
+			Initialized -= initialized;
 			dialog.ShowModal();
 			Quit();
 		};
+		Initialized += initialized;
 		Handler.Run();
 	}
 
@@ -525,10 +531,12 @@ public class Application : Widget
 	}
 
 	/// <summary>
-	/// Quits the application
+	/// Quits the application by closing all windows and exiting all message loops.
 	/// </summary>
 	/// <remarks>
-	/// This will call the <see cref="Terminating"/> event before terminating the application.
+	/// This fires the <see cref="Terminating"/> event and, if not cancelled, closes all open windows and
+	/// exits the main event loop. The process is not terminated; after <see cref="Run()"/> returns,
+	/// it can be called again. To terminate the process use <see cref="Environment.Exit"/> or similar.
 	/// </remarks>
 	public void Quit() => Handler.Quit();
 
@@ -734,11 +742,11 @@ public class Application : Widget
 		void Run();
 
 		/// <summary>
-		/// Quits the application
+		/// Quits the application by closing all windows and exiting the main event loop.
 		/// </summary>
 		/// <remarks>
-		/// This should call the <see cref="ICallback.OnTerminating"/> callback to allow user-defined code to cancel
-		/// the operation.
+		/// Implementations should fire <see cref="ICallback.OnTerminating"/> and, if not cancelled, close all
+		/// windows and exit the event loop. Must not terminate the process.
 		/// </remarks>
 		void Quit();
 

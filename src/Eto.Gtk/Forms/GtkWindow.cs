@@ -633,8 +633,11 @@ namespace Eto.GtkSharp.Forms
 					if (windows.Count == 1 && ReferenceEquals(windows[0], Control.GetWindow()))
 					{
 						var app = ((ApplicationHandler)Application.Instance.Handler);
-						app.Callback.OnTerminating(app.Widget, args);
-						shouldQuit = !args.Cancel;
+						if (!app.IsQuitting)
+						{
+							app.Callback.OnTerminating(app.Widget, args);
+							shouldQuit = !args.Cancel;
+						}
 					}
 				}
 			}

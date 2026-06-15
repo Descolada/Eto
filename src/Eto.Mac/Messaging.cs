@@ -66,6 +66,18 @@ namespace Eto.Mac
 		public static extern void void_objc_msgSend_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1);
 
 		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
+		public static extern void void_objc_msgSend_IntPtr_IntPtr_IntPtr(IntPtr receiver, IntPtr selector, IntPtr arg1, IntPtr arg2, IntPtr arg3);
+
+		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
+		public static extern void void_objc_msgSend_nuint(IntPtr receiver, IntPtr selector, nuint arg1);
+
+		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
+		public static extern void void_objc_msgSend_CGRect(IntPtr receiver, IntPtr selector, CGRect arg1);
+
+		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
+		public static extern void void_objc_msgSend_CGRect_IntPtr(IntPtr receiver, IntPtr selector, CGRect arg1, IntPtr arg2);
+
+		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
 		public static extern void void_objc_msgSend_bool(IntPtr receiver, IntPtr selector, bool arg1);
 
 		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
@@ -76,6 +88,9 @@ namespace Eto.Mac
 
 		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
 		public static extern nuint nuint_objc_msgSend(IntPtr receiver, IntPtr selector);
+
+		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
+		public static extern uint uint_objc_msgSend(IntPtr receiver, IntPtr selector);
 
 		[DllImport(LIBOBJC_DYLIB, EntryPoint = "objc_msgSend")]
 		public static extern void RectangleF_objc_msgSend_stret(out CGRect rect, IntPtr receiver, IntPtr selector);

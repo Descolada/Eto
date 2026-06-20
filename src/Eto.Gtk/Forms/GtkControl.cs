@@ -716,6 +716,14 @@ namespace Eto.GtkSharp.Forms
 
 				return handler.IsEventHandled(Drawable.TextCompositionEvent) || handler.IsEventHandled(Drawable.TextInsertionBoundsRequestedEvent);
 			}
+
+			// Eto's own IM context should only intercept key input for controls that actually
+			// consume it - custom TextInput handlers or Drawable composition. Native text widgets
+			// (TextBox/TextArea/Entry) have their own IM handling; routing their keys through this
+			// IMMulticontext as well swallows the first keystroke after focus until the control is
+			// re-focused. This gates both focus-in and key filtering on the same condition.
+			bool ShouldUseInputContext(GtkControl<TControl, TWidget, TCallback> handler)
+				=> handler.IsEventHandled(Eto.Forms.Control.TextInputEvent) || HandlesDrawableComposition(handler);
 			
 			void UpdateDrawableInputMethodLocation(GtkControl<TControl, TWidget, TCallback> handler)
 			{
@@ -861,7 +869,7 @@ namespace Eto.GtkSharp.Forms
 					args.RetVal = e.Handled;
 				}
 
-				if (e == null || !e.Handled)
+				if ((e == null || !e.Handled) && ShouldUseInputContext(handler))
 				{
 					commitHandled = false;
 					UpdateDrawableInputMethodLocation(handler);
@@ -891,9 +899,7 @@ namespace Eto.GtkSharp.Forms
 				if (handler == null)
 					return;
 
-				var shouldFocusInputContext = handler.IsEventHandled(Eto.Forms.Control.TextInputEvent)
-					|| HandlesDrawableComposition(handler);
-				if (shouldFocusInputContext)
+				if (ShouldUseInputContext(handler))
 				{
 					var inputContext = Context;
 					UpdateDrawableInputMethodLocation(handler);

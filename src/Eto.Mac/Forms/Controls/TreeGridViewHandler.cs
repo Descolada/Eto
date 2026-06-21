@@ -11,7 +11,13 @@ namespace Eto.Mac.Forms.Controls
 		readonly Dictionary<object, EtoTreeItem> cachedItems = new Dictionary<object, EtoTreeItem>();
 		readonly Dictionary<int, EtoTreeItem> topitems = new Dictionary<int, EtoTreeItem>();
 		int suppressExpandCollapseEvents;
+		// Re-entrancy counter used while the model is rebuilt (ReloadData/ReloadItem). While it is
+		// non-zero, SelectionDidChange is ignored entirely and the rebuild emits the correct events itself.
 		int skipSelectionChanged;
+		// One-shot flag scoped to a single collapse operation (armed in ShouldCollapseItem, always released
+		// in ItemDidCollapse). It must stay separate from skipSelectionChanged: conflating the counter and the
+		// flag let a collapse leave the counter stuck > 0, which permanently suppressed every later selection.
+		bool suppressSelectionDuringCollapse;
 
 		static readonly object ShowGroupItems_Key = new object();
 		static readonly object AllowGroupSelection_Key = new object();
@@ -116,7 +122,7 @@ namespace Eto.Mac.Forms.Controls
 				if (h == null)
 					return;
 
-				if (h.skipSelectionChanged > 0)
+				if (h.skipSelectionChanged > 0 || h.suppressSelectionDuringCollapse)
 					return;
 
 				// didn't start a drag (when this was set), so clear this out when the selection changes
@@ -146,19 +152,37 @@ namespace Eto.Mac.Forms.Controls
 			public override void ItemDidCollapse(NSNotification notification)
 			{
 				var h = Handler;
-				if (h == null || h.suppressExpandCollapseEvents > 0)
+				if (h == null)
 					return;
+
+				var reselect = collapsedItemIsSelected == true;
+				collapsedItemIsSelected = null;
+
+				if (h.suppressExpandCollapseEvents > 0)
+				{
+					// Still release the suppression armed in ShouldCollapseItem, otherwise it would stay set
+					// and silently drop every future SelectedItemChanged for the lifetime of the control.
+					h.suppressSelectionDuringCollapse = false;
+					return;
+				}
+
 				var myitem = h.GetEtoItem(notification.UserInfo[(NSString)"NSObject"]);
 				if (myitem != null)
 				{
 					myitem.Expanded = false;
 					h.Callback.OnCollapsed(h.Widget, new TreeGridViewItemEventArgs(myitem));
-					if (collapsedItemIsSelected == true)
-					{
+					// macOS moves the selection off the now-hidden descendant; re-home it onto the collapsed
+					// parent while the change is still suppressed, then report it once below.
+					if (reselect)
 						h.SelectedItem = myitem;
-						collapsedItemIsSelected = null;
-						h.skipSelectionChanged = 0;
-					}
+				}
+
+				h.suppressSelectionDuringCollapse = false;
+
+				if (reselect && myitem != null && !ReferenceEquals(myitem, lastSelected))
+				{
+					lastSelected = myitem;
+					h.Callback.OnSelectedItemChanged(h.Widget, EventArgs.Empty);
 				}
 			}
 
@@ -188,13 +212,13 @@ namespace Eto.Mac.Forms.Controls
 					var args = new TreeGridViewItemCancelEventArgs(myitem);
 					h.Callback.OnCollapsing(h.Widget, args);
 					if (!args.Cancel && !h.AllowMultipleSelection)
-					{
 						collapsedItemIsSelected = h.ChildIsSelected(myitem);
-						if (collapsedItemIsSelected == true)
-							h.skipSelectionChanged = 1;
-					}
 					else
 						collapsedItemIsSelected = null;
+					// Suppress the transient selection changes the collapse itself causes; ItemDidCollapse
+					// releases this and reports the final selection. Only needed when the selection actually
+					// moves (single-select with a selected descendant).
+					h.suppressSelectionDuringCollapse = !args.Cancel && collapsedItemIsSelected == true;
 					return !args.Cancel;
 				}
 				collapsedItemIsSelected = null;

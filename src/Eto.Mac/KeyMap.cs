@@ -138,11 +138,8 @@
 			keymap.Add(64, Keys.F17);
 			keymap.Add(79, Keys.F18);
 			keymap.Add(80, Keys.F19);
-			// keymap.Add(80, Keys.F20);
-			// keymap.Add(80, Keys.F21);
-			// keymap.Add(80, Keys.F22);
-			// keymap.Add(80, Keys.F23);
-			// keymap.Add(80, Keys.F24);
+			keymap.Add(90, Keys.F20); // kVK_F20
+			// F21-F24 have no kVK codes on macOS; Apple's HIToolbox only defines up to F20.
 			keymap.Add(18, Keys.D1);
 			keymap.Add(19, Keys.D2);
 			keymap.Add(20, Keys.D3);
@@ -170,21 +167,25 @@
 			keymap.Add(124, Keys.Right);
 			keymap.Add(48, Keys.Tab);
 			keymap.Add(49, Keys.Space);
-			//keymap.Add(, Keys.CapsLock);
-			//keymap.Add(, Keys.ScrollLock);
-			//keymap.Add(, Keys.PrintScreen);
-			//keymap.Add(, Keys.NumberLock);
+			// CapsLock (kVK_CapsLock, 57) arrives as a flagsChanged event rather than a keyDown, so it
+			// is handled in MacEventView.FlagsChanged, not here.
+			// ScrollLock, PrintScreen, NumberLock and Pause do not exist on macOS keyboards and have no
+			// kVK codes (the keypad Clear key, mapped to Keys.Clear below, sits where NumLock would be).
 			keymap.Add(36, Keys.Enter);
 			keymap.Add(53, Keys.Escape);
 			keymap.Add(67, Keys.Multiply);
 			keymap.Add(69, Keys.Add);
 			keymap.Add(78, Keys.Subtract);
 			keymap.Add(114, Keys.Help);
-			//keymap.Add(, Keys.Pause);
 			keymap.Add(71, Keys.Clear);
 			keymap.Add(81, Keys.Equal);
-			//keymap.Add(, Keys.Menu);
+			// The context-menu key is mapped to Keys.ContextMenu (110) below; the obsolete Keys.Menu
+			// (an alias for Alt) has no separate kVK code.
 			keymap.Add(42, Keys.Backslash);
+			// kVK_ISO_Section: the extra key on ISO keyboards (below Esc, left of 1; § / < / \ depending
+			// on layout). Eto has no dedicated value for it; Backslash matches its VK_OEM_102 ("non-US
+			// backslash") classification and keeps it from being reported as an unknown key.
+			keymap.Add(10, Keys.Backslash);
 			keymap.Add(24, Keys.Equal);
 			keymap.Add(41, Keys.Semicolon);
 			keymap.Add(39, Keys.Quote);
@@ -204,6 +205,13 @@
 			keymap.Add(89, Keys.Keypad7);
 			keymap.Add(91, Keys.Keypad8);
 			keymap.Add(92, Keys.Keypad9);
+
+			// JIS (Japanese) keyboard extras. Eto has no dedicated values, so the backslash-class keys
+			// map to Backslash so they are recognized rather than reported as unknown keys. The Eisu (102)
+			// and Kana (104) IME-toggle keys, the JIS keypad comma (95), and the media/volume keys have no
+			// meaningful Eto.Keys equivalent (the volume keys also arrive as NSSystemDefined, not keyDown).
+			keymap.Add(93, Keys.Backslash); // kVK_JIS_Yen
+			keymap.Add(94, Keys.Backslash); // kVK_JIS_Underscore (Ro)
 
 			return keymap;
 		}

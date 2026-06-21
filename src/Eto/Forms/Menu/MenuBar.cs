@@ -19,6 +19,12 @@ public enum MenuBarSystemItems
 	/// </summary>
 	Quit = 1 << 2,
 	/// <summary>
+	/// Add only the standard Edit menu (Undo/Redo/Cut/Copy/Paste/Select All), without the other
+	/// common menus (File, Window, View). Useful for a window that just needs the platform's
+	/// text-editing shortcuts. The Edit menu is also included as part of <see cref="Common"/>.
+	/// </summary>
+	Edit = 1 << 3,
+	/// <summary>
 	/// Add all system-defined menu bar items
 	/// </summary>
 	All = Common | Quit

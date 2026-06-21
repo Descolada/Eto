@@ -129,7 +129,10 @@ namespace Eto.Mac.Forms.Menu
 		{
 			var items = Widget.Items;
 			var lookup = Widget.SystemCommands.ToLookup(r => r.ID);
-			if (Widget.IncludeSystemItems.HasFlag(MenuBarSystemItems.Quit) && quitItem == null)
+			var include = Widget.IncludeSystemItems;
+			var common = include.HasFlag(MenuBarSystemItems.Common);
+
+			if (include.HasFlag(MenuBarSystemItems.Quit) && quitItem == null)
 			{
 				var application = ApplicationMenu;
 				var quitCommand = new Command { MenuText = Application.Instance.Localize(Widget, "Quit"), Shortcut = Keys.Application | Keys.Q };
@@ -137,7 +140,30 @@ namespace Eto.Mac.Forms.Menu
 				application.Items.AddSeparator(999);
 				application.Items.Add(quitCommand, 1000);
 			}
-			if (Widget.IncludeSystemItems.HasFlag(MenuBarSystemItems.Common))
+
+			// The Edit menu can be requested on its own (MenuBarSystemItems.Edit) so a window gets the
+			// standard text-editing shortcuts without the File/Window/View menus. It is also part of Common.
+			// When it is the only system menu (no Common), order it ahead of any user-defined menus (which
+			// default to order 0) so the system menus stay grouped at the front, like other macOS apps.
+			if (common || include.HasFlag(MenuBarSystemItems.Edit))
+			{
+				var edit = items.GetSubmenu(Application.Instance.Localize(Widget, "&Edit"), common ? 200 : -90);
+				edit.Trim = true;
+				edit.Items.AddSeparator(100);
+				edit.Items.AddRange(lookup["mac_undo"], 100);
+				edit.Items.AddRange(lookup["mac_redo"], 100);
+				edit.Items.AddSeparator(101);
+
+				edit.Items.AddSeparator(200);
+				edit.Items.AddRange(lookup["mac_cut"], 200);
+				edit.Items.AddRange(lookup["mac_copy"], 200);
+				edit.Items.AddRange(lookup["mac_paste"], 200);
+				edit.Items.AddRange(lookup["mac_delete"], 200);
+				edit.Items.AddRange(lookup["mac_selectAll"], 200);
+				edit.Items.AddSeparator(201);
+			}
+
+			if (common)
 			{
 				var application = ApplicationMenu;
 				application.Items.AddSeparator(800);
@@ -157,21 +183,6 @@ namespace Eto.Mac.Forms.Menu
 					file.Items.AddRange(lookup["mac_runPageLayout"], 1000);
 					file.Items.AddRange(lookup["mac_print"], 1000);
 				}
-
-				var edit = items.GetSubmenu(Application.Instance.Localize(Widget, "&Edit"), 200);
-				edit.Trim = true;
-				edit.Items.AddSeparator(100);
-				edit.Items.AddRange(lookup["mac_undo"], 100);
-				edit.Items.AddRange(lookup["mac_redo"], 100);
-				edit.Items.AddSeparator(101);
-
-				edit.Items.AddSeparator(200);
-				edit.Items.AddRange(lookup["mac_cut"], 200);
-				edit.Items.AddRange(lookup["mac_copy"], 200);
-				edit.Items.AddRange(lookup["mac_paste"], 200);
-				edit.Items.AddRange(lookup["mac_delete"], 200);
-				edit.Items.AddRange(lookup["mac_selectAll"], 200);
-				edit.Items.AddSeparator(201);
 
 				var window = items.GetSubmenu(Application.Instance.Localize(Widget, "&Window"), 900);
 				window.Trim = true;

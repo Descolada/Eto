@@ -27,6 +27,25 @@ namespace Eto.Mac.Forms
 			set { }
 		}
 
+		// Opt-in property key. An Eto control that sets this to true on its Properties will
+		// receive command-key combinations (e.g. Cmd+A) as KeyDown events via the field editor
+		// before the main menu can consume them as key equivalents (Select All, Copy, etc.).
+		// macOS dispatches view-level performKeyEquivalent: ahead of the menu, so this lets a
+		// control such as a hotkey-capture box claim those combos. It is opt-in to avoid firing
+		// duplicate KeyDown events on ordinary text fields for unclaimed command combinations.
+		public const string CaptureKeyEquivalentsProperty = "Eto.Mac.MacFieldEditor.CaptureKeyEquivalents";
+
+		public override bool PerformKeyEquivalent(NSEvent theEvent)
+		{
+			var handler = Handler as IMacViewHandler;
+			if (handler?.Widget != null
+				&& handler.Widget.Properties.Get<bool>(CaptureKeyEquivalentsProperty)
+				&& MacEventView.KeyDown(handler.Widget, theEvent))
+				return true;
+
+			return base.PerformKeyEquivalent(theEvent);
+		}
+
 		public override void KeyDown(NSEvent theEvent)
 		{
 			var handler = Handler as IMacViewHandler;

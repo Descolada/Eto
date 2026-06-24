@@ -389,13 +389,17 @@ namespace Eto.GtkSharp.Forms.Controls
 
 		public virtual void ScrollToEnd()
 		{
-			scroll.Vadjustment.Value = scroll.Vadjustment.Upper - scroll.Vadjustment.PageSize;
+			var end = Control.Buffer.EndIter;
+			var mark = Control.Buffer.CreateMark(null, end, false);
+			Control.ScrollToMark(mark, 0, false, 0, 0);
 			scroll.Hadjustment.Value = GetScrollX();
 		}
 
 		public virtual void ScrollToStart()
 		{
-			scroll.Vadjustment.Value = scroll.Vadjustment.Lower;
+			var start = Control.Buffer.StartIter;
+			var mark = Control.Buffer.CreateMark(null, start, false);
+			Control.ScrollToMark(mark, 0, false, 0, 0);
 			scroll.Hadjustment.Value = GetScrollX();
 		}		
 	}

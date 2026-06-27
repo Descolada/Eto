@@ -8,6 +8,7 @@ namespace Eto.GtkSharp.Forms.Controls
 		readonly Gtk.Box tab;
 		Gtk.Image gtkimage;
 		Image image;
+		string text = string.Empty;
 		public static Size MaxImageSize = new Size(16, 16);
 
 		public TabPageHandler()
@@ -57,8 +58,16 @@ namespace Eto.GtkSharp.Forms.Controls
 
 		public override string Text
 		{
-			get { return label.Text.ToEtoMnemonic(); }
-			set { label.TextWithMnemonic = value.ToPlatformMnemonic(); }
+			// Return the exact value last assigned rather than round-tripping through the GTK label.
+			// Setting a single "&" makes ToPlatformMnemonic() turn it into a "_" mnemonic that the label
+			// no longer reports back, so the getter would otherwise lose the ampersand - which breaks
+			// callers that match a tab by its name (e.g. Keysharp's TabControl.FindTab / UseTab).
+			get { return text ?? string.Empty; }
+			set
+			{
+				text = value ?? string.Empty;
+				label.TextWithMnemonic = text.ToPlatformMnemonic();
+			}
 		}
 
 		protected override void Dispose(bool disposing)

@@ -61,7 +61,7 @@ namespace Eto.GtkSharp.Forms.Controls
 			// Return the exact value last assigned rather than round-tripping through the GTK label.
 			// Setting a single "&" makes ToPlatformMnemonic() turn it into a "_" mnemonic that the label
 			// no longer reports back, so the getter would otherwise lose the ampersand - which breaks
-			// callers that match a tab by its name (e.g. Keysharp's TabControl.FindTab / UseTab).
+			// callers that match a tab by its exact assigned name.
 			get { return text ?? string.Empty; }
 			set
 			{

@@ -90,6 +90,7 @@ namespace Eto.GtkSharp.Forms
 		bool topmost;
 		bool resizable;
 		Size? clientSize;
+		Gtk.Widget emptyTitlebar;
 
 		protected GtkWindow()
 		{
@@ -252,6 +253,7 @@ namespace Eto.GtkSharp.Forms
 							Control.Decorated = true;
 							break;
 						case WindowStyle.None:
+							SetWaylandUndecorated();
 							Control.Decorated = false;
 							break;
 						case WindowStyle.Utility:
@@ -266,6 +268,49 @@ namespace Eto.GtkSharp.Forms
 		}
 
 		protected virtual Gdk.WindowTypeHint DefaultTypeHint => Gdk.WindowTypeHint.Normal;
+
+		// On Wayland, server-side-decoration-preferring compositors (KWin, Sway, Hyprland, COSMIC)
+		// still draw a titlebar for an "undecorated" GTK window. GTK3 never negotiates client-side
+		// decorations through the xdg-decoration protocol, so gtk_window_set_decorated(false) alone
+		// leaves the compositor free to add its own server-side decoration. Assigning an empty custom
+		// titlebar forces GTK into CSD mode: the compositor then leaves all decoration to the client,
+		// and decorated=false makes the client draw none. Mirrors the wxWidgets fix for the same
+		// issue (wxWidgets/wxWidgets#26357). X11 already honours decorated=false, so this is scoped to
+		// Wayland sessions and to before realization (gtk_window_set_titlebar must run pre-realize).
+		void SetWaylandUndecorated()
+		{
+			if (Control.IsRealized)
+				return;
+			if (!UsesWaylandBackend())
+				return;
+			// A consumer can opt a window out of the CSD trick — e.g. a click-through overlay, which must stay
+			// non-CSD so GTK does not manage and clobber its input region. Such windows remove their titlebar a
+			// different way (a compositor-side undecorate request). Set Widget.Properties["NoWaylandCsd"] = true.
+			if (Widget.Properties.Get<bool>("NoWaylandCsd"))
+				return;
+
+			if (emptyTitlebar == null)
+			{
+				emptyTitlebar = new Gtk.Fixed();
+				emptyTitlebar.SetSizeRequest(0, 0);
+				emptyTitlebar.Show();
+			}
+
+			Control.Titlebar = emptyTitlebar;
+		}
+
+		static bool UsesWaylandBackend()
+		{
+			if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+				return false;
+
+			var backend = Environment.GetEnvironmentVariable("GDK_BACKEND");
+			if (string.IsNullOrWhiteSpace(backend))
+				return true;
+
+			var first = backend.Split(',')[0].Trim();
+			return string.Equals(first, "wayland", StringComparison.OrdinalIgnoreCase);
+		}
 
 		void SetTypeHint()
 		{

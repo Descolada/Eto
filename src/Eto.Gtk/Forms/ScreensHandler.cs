@@ -39,7 +39,11 @@ namespace Eto.GtkSharp.Forms
 			get
 			{
 #if GTKCORE
-				return new Screen(new ScreenHandler(Gdk.Display.Default.PrimaryMonitor));
+				// gdk_display_get_primary_monitor() returns null on backends with no designated primary
+				// monitor (notably Wayland). Fall back to the first monitor so callers never get a Screen
+				// backed by a null Gdk.Monitor, whose Bounds/WorkingArea accessors throw NullReferenceException.
+				var display = Gdk.Display.Default;
+				return new Screen(new ScreenHandler(display.PrimaryMonitor ?? display.GetMonitor(0)));
 #else
 				return new Screen(new ScreenHandler(Gdk.Display.Default.DefaultScreen, 0));
 #endif

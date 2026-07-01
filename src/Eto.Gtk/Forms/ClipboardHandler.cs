@@ -363,29 +363,26 @@ namespace Eto.GtkSharp.Forms
 		{
 			get
 			{
-				Gdk.Atom[] atoms;
 				IntPtr atomPtrs;
 				int count;
 				var success = NativeMethods.gtk_clipboard_wait_for_targets(Control.Handle, out atomPtrs, out count);
 
-				if (!success || count <= 0)
+				if (!success || count <= 0 || atomPtrs == IntPtr.Zero)
 				{
-					atoms = null;
 					return new string[0];
 				}
 
-				atoms = new Gdk.Atom[count];
-				unsafe
+				try
 				{
-					byte* p = (byte*)atomPtrs.ToPointer();
+					var atoms = new Gdk.Atom[count];
 					for (int i = 0; i < count; i++)
-					{
-						atoms[i] = new Gdk.Atom(new IntPtr(*p));
-						p += IntPtr.Size;
-					}
+						atoms[i] = new Gdk.Atom(Marshal.ReadIntPtr(atomPtrs, i * IntPtr.Size));
+					return atoms.Select(r => r.Name).ToArray();
 				}
-
-				return atoms.Select(r => r.Name).ToArray();
+				finally
+				{
+					GLib.Marshaller.Free(atomPtrs);
+				}
 			}
 		}
 

@@ -281,7 +281,7 @@ namespace Eto.GtkSharp.Forms
 		{
 			if (Control.IsRealized)
 				return;
-			if (!UsesWaylandBackend())
+			if (!Helper.IsWaylandBackend)
 				return;
 			// A consumer can opt a window out of the CSD trick — e.g. a click-through overlay, which must stay
 			// non-CSD so GTK does not manage and clobber its input region. Such windows remove their titlebar a
@@ -297,19 +297,6 @@ namespace Eto.GtkSharp.Forms
 			}
 
 			Control.Titlebar = emptyTitlebar;
-		}
-
-		static bool UsesWaylandBackend()
-		{
-			if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
-				return false;
-
-			var backend = Environment.GetEnvironmentVariable("GDK_BACKEND");
-			if (string.IsNullOrWhiteSpace(backend))
-				return true;
-
-			var first = backend.Split(',')[0].Trim();
-			return string.Equals(first, "wayland", StringComparison.OrdinalIgnoreCase);
 		}
 
 		void SetTypeHint()

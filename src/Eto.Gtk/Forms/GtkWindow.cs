@@ -665,8 +665,17 @@ namespace Eto.GtkSharp.Forms
 					if (windows.Count == 1 && ReferenceEquals(windows[0], Control.GetWindow()))
 					{
 						var app = ((ApplicationHandler)Application.Instance.Handler);
-						app.Callback.OnTerminating(app.Widget, args);
-						shouldQuit = !args.Cancel;
+						// Fire Terminating so the app can veto QUITTING. Use a separate CancelEventArgs: a veto
+						// (Cancel = true, i.e. "keep the app running") must not also cancel THIS window's own close.
+						// Letting a Terminating veto keep the window open only makes sense for the MainForm (the
+						// "are you sure you want to quit?" pattern); a transient/dialog window that merely happens to
+						// be the last non-withdrawn top-level must still close even when the app declines to quit --
+						// otherwise a modal dialog gets trapped in its ShowModal loop and its buttons appear dead.
+						var terminatingArgs = new CancelEventArgs();
+						app.Callback.OnTerminating(app.Widget, terminatingArgs);
+						shouldQuit = !terminatingArgs.Cancel;
+						if (terminatingArgs.Cancel && ReferenceEquals(Widget, Application.Instance.MainForm))
+							args.Cancel = true;
 					}
 				}
 			}

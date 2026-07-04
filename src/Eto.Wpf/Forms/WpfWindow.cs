@@ -338,9 +338,16 @@ namespace Eto.Wpf.Forms
 
 			if (!args.Cancel && willShutDown)
 			{
-				// last window closing, so call OnTerminating to let the app abort terminating
+				// last window closing, so call OnTerminating to let the app abort terminating.
+				// Use a separate CancelEventArgs so a veto (Cancel = true, "keep the app running") doesn't also
+				// cancel THIS window's own close. Letting a Terminating veto keep the window open only makes sense
+				// for the MainForm; a transient/dialog window must still close even when the app declines to quit
+				// -- otherwise a modal dialog gets trapped in its ShowModal loop and its buttons appear dead.
 				var app = ((ApplicationHandler)Application.Instance.Handler);
-				app.Callback.OnTerminating(app.Widget, args);
+				var terminatingArgs = new CancelEventArgs(args.Cancel);
+				app.Callback.OnTerminating(app.Widget, terminatingArgs);
+				if (terminatingArgs.Cancel && ReferenceEquals(Widget, Application.Instance.MainForm))
+					args.Cancel = true;
 			}
 			e.Cancel = args.Cancel;
 			IsApplicationClosing = !e.Cancel && willShutDown;

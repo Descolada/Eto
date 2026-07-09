@@ -56,41 +56,59 @@ namespace Eto.GtkSharp.Forms
 		protected extern static void notify_notification_clear_actions(IntPtr notification);
 
 		private static bool init;
+		private static bool initAttempted;
+		private static readonly object initLock = new object();
 		private static bool allowactions;
 		private static MethodInfo activatedmethod;
 
+		// Initialize libnotify lazily (on the first notification Show) instead of eagerly from
+		// Application.Run. notify_get_server_caps() is a SYNCHRONOUS D-Bus call to
+		// org.freedesktop.Notifications; when that name is unowned and resolves to a slow or broken
+		// activatable service - e.g. a mixed GNOME+KDE install where the KDE "plasma_waitforname" stub
+		// shadows the name and waits ~25s for a plasmashell that never comes - the call blocks for the
+		// full D-Bus timeout. Calling it from Run() froze every application launch on the main thread
+		// for that entire timeout. Deferring it here keeps startup off the notification bus, so only
+		// apps that actually post a notification ever touch it. Idempotent and thread-safe.
 		public static void Init()
 		{
-			try
+			lock (initLock)
 			{
-				notify_init(Assembly.GetExecutingAssembly().FullName);
+				if (initAttempted)
+					return;
 
-				var list = new GLib.List(notify_get_server_caps(), typeof(string));
-				foreach (var item in list)
+				initAttempted = true;
+
+				try
 				{
-					if (item.ToString() == "actions")
-					{
-						allowactions = true;
-						break;
-					}
-				}
+					notify_init(Assembly.GetExecutingAssembly().FullName);
 
-				var methods = typeof(LinuxNotificationHandler).GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
-				foreach(var m in methods)
+					var list = new GLib.List(notify_get_server_caps(), typeof(string));
+					foreach (var item in list)
+					{
+						if (item.ToString() == "actions")
+						{
+							allowactions = true;
+							break;
+						}
+					}
+
+					var methods = typeof(LinuxNotificationHandler).GetMethods(BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic);
+					foreach(var m in methods)
+					{
+						if (m.Name == "Activated")
+						{
+							activatedmethod = m;
+							break;
+						}
+					}
+
+					init = true;
+				}
+				catch
 				{
-					if (m.Name == "Activated")
-					{
-						activatedmethod = m;
-						break;
-					}
+					Console.WriteLine("Error, libnotify.so.4 was not found, notifications won't be displayed.");
+					init = false;
 				}
-
-				init = true;
-			}
-			catch
-			{
-				Console.WriteLine("Error, libnotify.so.4 was not found, notifications won't be displayed.");
-				init = false;
 			}
 		}
 
@@ -142,6 +160,9 @@ namespace Eto.GtkSharp.Forms
 
 		public void Show(TrayIndicator indicator = null)
 		{
+			// Lazily probe the notification server on first use (see Init) instead of at startup.
+			Init();
+
 			if (!init)
 				return;
 

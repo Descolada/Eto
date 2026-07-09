@@ -282,8 +282,10 @@ namespace Eto.GtkSharp.Forms
 			//if (!Platform.IsWindows) Gdk.Threads.Init(); // do this in windows, and it stalls!  ugh
 			MainThreadID = Thread.CurrentThread.ManagedThreadId;
 
-			if (EtoEnvironment.Platform.IsLinux)
-				LinuxNotificationHandler.Init();
+			// Notification init is deferred to the first Notification.Show (see LinuxNotificationHandler.Init):
+			// it makes a synchronous D-Bus GetCapabilities call that can block for the full ~25s D-Bus timeout
+			// when org.freedesktop.Notifications is unowned or served by a slow/broken activatable stub, which
+			// otherwise froze every application launch here on the main thread.
 			Callback.OnInitialized(Widget, EventArgs.Empty);
 			if (!attached)
 			{

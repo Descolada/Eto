@@ -143,6 +143,11 @@ namespace Eto.GtkSharp.Drawing
 		{
 			var pixbuf = image.ToGdk();
 			Control = pixbuf.ScaleSimple(width, height, interpolation.ToGdk());
+			// Carry the alpha channel through the copy. Without this, Alpha defaults to false, so a later draw on
+			// this bitmap picks Cairo.Format.Rgb24 (no alpha) instead of Argb32 — which is why copying an image and
+			// drawing on it (e.g. Overlay.SetImage of a rendered, partly-transparent bitmap) produced an OPAQUE fill
+			// with black where the source was transparent.
+			Alpha = Control.HasAlpha;
 		}
 
 		public BitmapData Lock()

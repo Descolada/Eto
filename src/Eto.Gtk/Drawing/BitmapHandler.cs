@@ -152,10 +152,12 @@ namespace Eto.GtkSharp.Drawing
 
 		public BitmapData Lock()
 		{
-			if (Surface != null)
-			{
-				return new SurfaceBitmapDataHandler(Widget, Surface.DataPtr, Surface.Stride, 32, null, true);
-			}
+			// Dissolve any Cairo drawing surface into the straight (non-premultiplied) pixbuf before locking, so pixel
+			// read/write goes through straight-alpha storage. Locking the surface directly exposed premultiplied
+			// ARGB32, whose 8-bit premultiply→un-premultiply round trip loses precision for non-opaque pixels
+			// (SetPixel then GetPixel of 0x80112233 came back 0x800F2131). EnsureData is a no-op when there is no
+			// surface, and only the first Lock after a draw pays the dissolve (the surface is recreated on the next draw).
+			EnsureData();
 			return InnerLock();
 		}
 

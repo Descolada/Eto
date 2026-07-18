@@ -804,25 +804,26 @@ namespace Eto.GtkSharp.Forms
 
 		public Rectangle Bounds
 		{
-			// GTK positions (gtk_window_move) and sizes (gtk_window_resize) windows with separate
-			// calls, so there is no combined API - set size then location.
 			get => new Rectangle(Location, Size);
 			set
 			{
 				if (Control.IsMapped)
 				{
-					var size = Size;
 					UserPreferredSize = value.Size;
-					if (value.Size != size)
+					// Wayland popups anchor through a dedicated position-only path; resize them separately.
+					if (TryMovePopupToRect(value.Location))
 					{
-						// if the size is different, resize the window and wait for the size to be applied
-						Control.GetWindow().Resize(value.Width, value.Height);
-						while (Gtk.Application.EventsPending())
-							Gtk.Application.RunIteration();
+						if (value.Size != Size)
+							Control.GetWindow().Resize(value.Width, value.Height);
 					}
-						
-					if (!TryMovePopupToRect(value.Location))
-						Control.GetWindow().Move(value.X, value.Y);
+					else
+					{
+						// A single gdk_window_move_resize is one X ConfigureWindow request, so a live geometry
+						// change (e.g. a zooming overlay that moves and resizes every frame) never exposes an
+						// intermediate new-size/old-position frame the way a separate Resize + Move pair does.
+						// This is the same GdkWindow operation the separate path used, just combined atomically.
+						Control.GetWindow().MoveResize(value.X, value.Y, value.Width, value.Height);
+					}
 					return;
 				}
 				Size = value.Size;

@@ -236,6 +236,23 @@ namespace Eto.WinForms.Forms
 				Win32.ExecuteInDpiAwarenessContext(() => Win32.SetWindowPos(Control, IntPtr.Zero, loc.X, loc.Y, 0, 0, Win32.SWP.NOSIZE | Win32.SWP.NOACTIVATE));
 			}
 		}
+		
+		public Rectangle Bounds
+		{
+			get
+			{
+				var rect = new Win32.RECT();
+				Win32.ExecuteInDpiAwarenessContext(() => Win32.GetWindowRect(Control, out rect));
+
+				var bounds = new Rectangle(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
+				return Rectangle.Round(bounds.ScreenToLogical(SwfScreen));
+			}
+			set
+			{
+				var bounds = ((RectangleF)value).LogicalToScreen();
+				Win32.ExecuteInDpiAwarenessContext(() => Win32.SetWindowPos(Control, IntPtr.Zero, bounds.X, bounds.Y, bounds.Width, bounds.Height, Win32.SWP.NOACTIVATE));
+			}
+		}
 
 		public double Opacity
 		{
@@ -723,7 +740,7 @@ namespace Eto.WinForms.Forms
 		}
 
 		public bool MovableByWindowBackground { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
-		public bool AutoSize { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+		public bool AutoSize { get => false; set => throw new NotImplementedException(); }
 
 		public void DoDragDrop(DataObject data, DragEffects allowedAction, Image image, PointF offset)
 		{
@@ -844,5 +861,8 @@ namespace Eto.WinForms.Forms
 		public bool IsMouseCaptured => throw new NotImplementedException();
 		public bool CaptureMouse() => throw new NotImplementedException();
 		public void ReleaseMouseCapture() => throw new NotImplementedException();
+		public void AddGesture(Gesture item) { }
+		public void ClearGestures() { }
+		public void RemoveGesture(Gesture item) { }
 	}
 }

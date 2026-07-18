@@ -804,7 +804,13 @@ namespace Eto.GtkSharp.Forms
 				{
 					if (context != null)
 						return context;
-					context = new Gtk.IMMulticontext();
+					// Native TextBox/TextArea already own a system-IM (ibus) context on
+					// their GtkEntry/GtkTextView; a second focused IMMulticontext steals
+					// their input. Only Drawables (custom-drawn text) need a full IME
+					// here -- native widgets use the standalone IMContextSimple.
+					context = (Handler != null && HandlesDrawableComposition(Handler))
+						? (Gtk.IMContext)new Gtk.IMMulticontext()
+						: new Gtk.IMContextSimple();
 					context.UsePreedit = true;
 					context.PreeditStart += (o, args) =>
 					{
@@ -856,7 +862,7 @@ namespace Eto.GtkSharp.Forms
 			}
 
 			[GLib.ConnectBefore]
-			public void HandleKeyPressEvent(object o, Gtk.KeyPressEventArgs args)
+			public virtual void HandleKeyPressEvent(object o, Gtk.KeyPressEventArgs args)
 			{
 				var handler = Handler;
 				if (handler == null)
@@ -1315,11 +1321,20 @@ namespace Eto.GtkSharp.Forms
 			if (!ContainerControl.IsRealized)
 			{
 				if (ContainerControl is Gtk.Window window)
+				{
 					window.Child.ShowAll();
+					window.Realize();
+				}
 				else
 					ContainerControl.ShowAll();
 
-				ContainerControl.Realize();
+#if GTK3
+				// GTK returns a stale (minimal) size on the first size request after ShowAll -- some
+				// widgets (e.g. GtkTreeView) only settle their preferred size on a subsequent request.
+				// Prime it here so the measurement below returns the settled value for controls that
+				// haven't been shown yet.
+				control.GetPreferredSize(out _, out _);
+#endif
 			}
 #if GTK3
 			var requestMode = ContainerControl.RequestMode;
@@ -1477,5 +1492,40 @@ namespace Eto.GtkSharp.Forms
 				}
 			}
 		}
+
+#if GTKCORE
+		public virtual void AddGesture(Gesture item)
+		{
+			if (item == null)
+				throw new ArgumentNullException(nameof(item));
+
+			var handler = ((IHandlerSource)item).Handler as Eto.GtkSharp.Forms.Controls.IGtkGestureHandler;
+			if (handler == null)
+				throw new NotSupportedException($"Gesture '{item.GetType().FullName}' is not supported on GTK");
+
+			handler.AttachTo(EventControl);
+		}
+
+		public virtual void ClearGestures()
+		{
+			foreach (var gesture in Widget.Gestures)
+			{
+				if (((IHandlerSource)gesture).Handler is Eto.GtkSharp.Forms.Controls.IGtkGestureHandler handler)
+					handler.Detach();
+			}
+		}
+
+		public virtual void RemoveGesture(Gesture item)
+		{
+			if (item == null)
+				return;
+			if (((IHandlerSource)item).Handler is Eto.GtkSharp.Forms.Controls.IGtkGestureHandler handler)
+				handler.Detach();
+		}
+#else
+		public virtual void AddGesture(Gesture item) { }
+		public virtual void ClearGestures() { }
+		public virtual void RemoveGesture(Gesture item) { }
+#endif
 	}
 }

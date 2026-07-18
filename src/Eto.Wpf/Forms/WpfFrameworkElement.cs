@@ -97,6 +97,7 @@ namespace Eto.Wpf.Forms
 		bool _needsThemeChanged;
 		Size? newSize;
 		sw.Size parentMinimumSize;
+		HwndSource _mouseHWheelSource;
 		bool isMouseOver;
 		bool isMouseCaptured;
 		public bool XScale { get; private set; }
@@ -119,10 +120,17 @@ namespace Eto.Wpf.Forms
 			var size = UserPreferredSize;
 			var control = ContainerControl;
 
-			if (ContainsScrollViewer)
+			var parentWindow = Widget.ParentWindow;
+			if (ContainsScrollViewer && parentWindow?.AutoSize == true && parentWindow.WindowState == WindowState.Normal)
 			{
-				// enclosed scrollable does not size appropriately on Arrange, so we need to 
-				// constrain the size here to prevent it from using the available space incorrectly.
+				// The enclosed scrollable is measured with this constraint, which becomes its viewport size.
+				// In an auto-sizing window the content is probed with the monitor size, so without constraining
+				// to the preferred size here the scroll viewer would measure its content as fitting that huge
+				// space and not show scrollbars. When NOT auto-sizing, the constraint is the real space the
+				// control will be arranged to, so we must NOT constrain it or the content won't expand to fill
+				// the scrollable area when the control is scaled larger than its preferred size.
+				// Also skip when the auto-size window is maximized: it then has a fixed (screen) size the content
+				// should fill, so constraining to the preferred size would pin the content until it's re-measured.
 				if (!double.IsPositiveInfinity(constraint.Width) && size.Width >= 0 && size.Width < constraint.Width)
 					constraint.Width = size.Width;
 				if (!double.IsPositiveInfinity(constraint.Height) && size.Height >= 0 && size.Height < constraint.Height)
@@ -184,6 +192,8 @@ namespace Eto.Wpf.Forms
 		public virtual bool UseKeyPreview => false;
 
 		public virtual bool UseDragDropPreview => UseMousePreview;
+
+		protected virtual bool SuppressKeyEvents => false;
 
 		public sw.Size ParentMinimumSize
 		{
@@ -476,6 +486,9 @@ namespace Eto.Wpf.Forms
 					break;
 				case Eto.Forms.Control.MouseWheelEvent:
 					ContainerControl.PreviewMouseWheel += HandlePreviewMouseWheel;
+					ContainerControl.Loaded += HandleMouseWheelLoaded;
+					ContainerControl.Unloaded += HandleMouseWheelUnloaded;
+					AddMouseHWheelHook();
 					break;
 				case Eto.Forms.Control.SizeChangedEvent:
 					ContainerControl.SizeChanged += HandleSizeChanged;
@@ -578,6 +591,51 @@ namespace Eto.Wpf.Forms
 			var args = e.ToEto(Control);
 			Callback.OnMouseWheel(Widget, args);
 			e.Handled = args.Handled;
+		}
+
+		const int WM_MOUSEHWHEEL = 0x020E;
+
+		private void HandleMouseWheelLoaded(object sender, sw.RoutedEventArgs e)
+		{
+			AddMouseHWheelHook();
+		}
+
+		private void HandleMouseWheelUnloaded(object sender, sw.RoutedEventArgs e)
+		{
+			RemoveMouseHWheelHook();
+		}
+
+		void AddMouseHWheelHook()
+		{
+			if (_mouseHWheelSource != null || ContainerControl == null)
+				return;
+			_mouseHWheelSource = sw.PresentationSource.FromVisual(ContainerControl) as HwndSource;
+			_mouseHWheelSource?.AddHook(MouseHWheelHook);
+		}
+
+		void RemoveMouseHWheelHook()
+		{
+			if (_mouseHWheelSource == null)
+				return;
+			_mouseHWheelSource.RemoveHook(MouseHWheelHook);
+			_mouseHWheelSource = null;
+		}
+
+		IntPtr MouseHWheelHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+		{
+			if (msg != WM_MOUSEHWHEEL || Control == null || ContainerControl?.IsMouseOver != true)
+				return IntPtr.Zero;
+
+			var delta = -GetWheelDelta(wParam) / WpfConversions.WheelDelta;
+			var args = new MouseEventArgs(Mouse.Buttons, Keyboard.Modifiers, PointFromScreen(Mouse.Position), new SizeF(delta, 0));
+			Callback.OnMouseWheel(Widget, args);
+			handled = args.Handled;
+			return IntPtr.Zero;
+		}
+
+		static int GetWheelDelta(IntPtr wParam)
+		{
+			return (short)(((long)wParam >> 16) & 0xFFFF);
 		}
 
 		private void HandleIsVisibleChanged(object sender, sw.DependencyPropertyChangedEventArgs e)
@@ -815,6 +873,9 @@ namespace Eto.Wpf.Forms
 
 		void HandleKeyDown(object sender, swi.KeyEventArgs e)
 		{
+			if (SuppressKeyEvents)
+				return;
+
 			var args = e.ToEto(KeyEventType.KeyDown);
 			if (args.KeyData != Keys.None)
 			{
@@ -825,6 +886,9 @@ namespace Eto.Wpf.Forms
 
 		void HandleKeyUp(object sender, swi.KeyEventArgs e)
 		{
+			if (SuppressKeyEvents)
+				return;
+			
 			var args = e.ToEto(KeyEventType.KeyUp);
 			if (args.KeyData != Keys.None)
 			{
@@ -1216,7 +1280,7 @@ namespace Eto.Wpf.Forms
 			// during a host modal sizing/move loop (DefWindowProc's pump doesn't
 			// reach idle), so this Invoke would deadlock the caller.
 			if (!ContainerControl.IsLoaded)
-				ContainerControl.Dispatcher.Invoke(new Action(() => { }), sw.Threading.DispatcherPriority.ApplicationIdle, null);
+				ContainerControl.Dispatcher.Invoke(new Action(() => { }), sw.Threading.DispatcherPriority.Loaded, null);
 
 			// update the layout
 			ContainerControl.UpdateLayout();
@@ -1258,5 +1322,33 @@ namespace Eto.Wpf.Forms
 			return ContainerControl.CaptureMouse();
 		}
 		public void ReleaseMouseCapture() => ContainerControl.ReleaseMouseCapture();
+		public virtual void AddGesture(Gesture item)
+		{
+			if (item == null)
+				throw new ArgumentNullException(nameof(item));
+
+			var handler = ((IHandlerSource)item).Handler as Eto.Wpf.Forms.Controls.IWpfGestureHandler;
+			if (handler == null)
+				throw new NotSupportedException($"Gesture '{item.GetType().FullName}' is not supported on WPF");
+
+			handler.AttachTo(ContainerControl);
+		}
+
+		public virtual void ClearGestures()
+		{
+			foreach (var gesture in Widget.Gestures)
+			{
+				if (((IHandlerSource)gesture).Handler is Eto.Wpf.Forms.Controls.IWpfGestureHandler handler)
+					handler.Detach();
+			}
+		}
+
+		public virtual void RemoveGesture(Gesture item)
+		{
+			if (item == null)
+				return;
+			if (((IHandlerSource)item).Handler is Eto.Wpf.Forms.Controls.IWpfGestureHandler handler)
+				handler.Detach();
+		}
 	}
 }

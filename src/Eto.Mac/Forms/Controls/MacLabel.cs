@@ -50,7 +50,13 @@ namespace Eto.Mac.Forms.Controls
 			if (BetterBackgroundColor != null)
 			{
 				BetterBackgroundColor.SetFill();
-				NSGraphics.RectFill(cellFrame);
+				// Fill the alignment rect rather than the whole frame. A label is laid out by its alignment
+				// rect (see MacLabel.DefaultUseAlignmentFrame), so an NSTextField's frame is wider than the
+				// box the layout asked for - 2pt on each side. Filling the frame painted the background
+				// outside that box: adjacent labels' backgrounds overlapped, and the colour started 2pt to
+				// the left of where the control reports itself. Other platforms fill exactly the control
+				// rect. The text is unaffected - base.DrawWithFrame still gets the full frame.
+				NSGraphics.RectFill(inView.GetAlignmentRectForFrame(cellFrame));
 			}
 			base.DrawWithFrame(cellFrame, inView);
 		}

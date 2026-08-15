@@ -1214,26 +1214,46 @@ namespace Eto.GtkSharp.Forms
 
 		public PointF PointFromScreen(PointF point)
 		{
-			var gdkWindow = EventControl.GetWindow();
-			if (gdkWindow != null)
-			{
-				int x, y;
-				gdkWindow.GetOrigin(out x, out y);
-				return new PointF(point.X - x, point.Y - y);
-			}
-			return point;
+			var origin = ScreenOrigin();
+			return new PointF(point.X - origin.X, point.Y - origin.Y);
 		}
 
 		public PointF PointToScreen(PointF point)
 		{
-			var gdkWindow = EventControl.GetWindow();
-			if (gdkWindow != null)
-			{
-				int x, y;
-				gdkWindow.GetOrigin(out x, out y);
-				return new PointF(point.X + x, point.Y + y);
-			}
-			return point;
+			var origin = ScreenOrigin();
+			return new PointF(point.X + origin.X, point.Y + origin.Y);
+		}
+
+		/// <summary>
+		/// Where this widget's own (0,0) sits on screen. Both conversions above are expressed through it so
+		/// they stay exact inverses of one another.
+		/// </summary>
+		/// <remarks>
+		/// gtk_widget_translate_coordinates is the reliable way to locate a widget: gtk_widget_get_window
+		/// answers with whichever ancestor owns a window, so how much of the widget's own offset that origin
+		/// already carries depends on the widget, and an unrealized widget has no window to ask at all — it
+		/// reported the screen's corner. Translating to the toplevel and adding that window's origin is
+		/// correct for windowed and windowless widgets alike.
+		/// </remarks>
+		PointF ScreenOrigin()
+		{
+			var toplevel = EventControl.Toplevel;
+
+			// A realized widget always sits under a realized toplevel, so an unrealized toplevel is the one
+			// case where nothing at all is known about where this widget is.
+			if (!(toplevel?.GetWindow() is Gdk.Window toplevelWindow))
+				return PointF.Empty;
+
+			toplevelWindow.GetOrigin(out var originX, out var originY);
+
+			// Translating fails while the widget itself is unrealized — a notebook page's children are only
+			// realized once that page has been shown. The toplevel's own origin is then the closest honest
+			// answer: unlike reporting nothing, it does not put an unplaced widget at the screen's corner,
+			// where a hit test would find it under points that are nowhere near it.
+			if (EventControl.TranslateCoordinates(toplevel, 0, 0, out var offsetX, out var offsetY))
+				return new PointF(originX + offsetX, originY + offsetY);
+
+			return new PointF(originX, originY);
 		}
 
 		public Point Location

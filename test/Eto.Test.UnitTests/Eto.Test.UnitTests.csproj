@@ -23,8 +23,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Eto.Test\Eto.Test.csproj" />
     <ProjectReference Include="..\..\src\Eto.Wpf\Eto.Wpf.csproj" Condition="$(TargetFramework) == 'net10.0-windows' or $(TargetFramework) == 'net48' " PrivateAssets="all" />
-    <ProjectReference Include="..\..\src\Eto.Gtk\Eto.Gtk.csproj" Condition="$(TargetFramework) == 'net10.0'" PrivateAssets="all" />
-    <ProjectReference Include="..\..\src\Eto.Mac\Eto.Mac64.csproj" Condition="$(TargetFramework) == 'net10.0'" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Eto.Gtk\Eto.Gtk.csproj" Condition="$(TargetFramework) == 'net10.0' and $([MSBuild]::IsOSPlatform(Linux))" PrivateAssets="all" />
+    <ProjectReference Include="..\..\src\Eto.Mac\Eto.Mac64.csproj" Condition="$(TargetFramework) == 'net10.0' and $([MSBuild]::IsOSPlatform(OSX))" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

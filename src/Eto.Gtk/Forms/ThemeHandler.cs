@@ -21,20 +21,20 @@ public enum GtkThemeStyle
 
 public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 {
-	// Cache the original system theme name so we can restore it
+	// Cache the original GTK theme name so Light/Dark can select matching variants
 	static string s_systemThemeName;
-	static bool s_systemPreferDark;
+	static bool s_systemDefaultsCaptured;
 
 	// When set, this is a named GTK theme (e.g. "Adwaita", "Yaru-dark")
 	string _gtkThemeName;
 
 	internal static void EnsureSystemDefaults()
 	{
-		if (s_systemThemeName == null)
+		if (!s_systemDefaultsCaptured)
 		{
 			var settings = Gtk.Settings.Default;
 			s_systemThemeName = settings.ThemeName;
-			s_systemPreferDark = settings.ApplicationPreferDarkTheme;
+			s_systemDefaultsCaptured = true;
 		}
 	}
 	
@@ -45,6 +45,9 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 
 	static string GetLightThemeName(string themeName)
 	{
+		if (string.IsNullOrEmpty(themeName))
+			return themeName;
+
 		if (themeName.EndsWith("-dark", StringComparison.OrdinalIgnoreCase))
 			return themeName.Substring(0, themeName.Length - "-dark".Length);
 		if (themeName.EndsWith(":dark", StringComparison.OrdinalIgnoreCase))
@@ -54,6 +57,9 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 
 	static string GetDarkThemeName(string themeName)
 	{
+		if (string.IsNullOrEmpty(themeName))
+			return null;
+
 		var lightName = GetLightThemeName(themeName);
 		return ThemeExists(lightName + "-dark") ? lightName + "-dark" :
 			ThemeExists(lightName + ":dark") ? lightName + ":dark" : null;
@@ -78,6 +84,9 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 	/// </summary>
 	static bool ThemeExists(string themeName)
 	{
+		if (string.IsNullOrEmpty(themeName))
+			return false;
+
 		foreach (var dir in s_themeSearchDirs)
 		{
 			var themeDir = Path.Combine(dir, themeName, "gtk-3.0");
@@ -143,7 +152,33 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 		_ => Control.ToString()
 	};
 
-	public ThemeStyle ThemeStyle => IsDarkTheme() ? ThemeStyle.Dark : ThemeStyle.Light;
+	public ThemeStyle ThemeStyle => Control == GtkThemeStyle.System
+		? GetSystemThemeStyle(ApplicationHandler.Instance?.PortalColorScheme)
+		: IsDarkTheme() ? ThemeStyle.Dark : ThemeStyle.Light;
+
+	internal static ThemeStyle ResolveSystemThemeStyle(uint? portalColorScheme,
+		bool applicationPreferDarkTheme, string themeName)
+	{
+		if (portalColorScheme == 1)
+			return ThemeStyle.Dark;
+		if (portalColorScheme == 2)
+			return ThemeStyle.Light;
+		return applicationPreferDarkTheme || IsDarkThemeName(themeName) ? ThemeStyle.Dark : ThemeStyle.Light;
+	}
+
+	internal static ThemeStyle GetSystemThemeStyle(uint? portalColorScheme)
+	{
+		var settings = Gtk.Settings.Default;
+		return ResolveSystemThemeStyle(portalColorScheme,
+			settings.ApplicationPreferDarkTheme, settings.ThemeName);
+	}
+
+	internal static uint? NormalizePortalColorScheme(uint? colorScheme) =>
+		colorScheme == 1 || colorScheme == 2 ? colorScheme : null;
+
+	static bool IsDarkThemeName(string themeName) =>
+		!string.IsNullOrEmpty(themeName) && (themeName.EndsWith("-dark", StringComparison.OrdinalIgnoreCase)
+			|| themeName.EndsWith(":dark", StringComparison.OrdinalIgnoreCase));
 
 	bool IsDarkTheme()
 	{
@@ -156,13 +191,12 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 			themeName = Gtk.Settings.Default.ThemeName;
 		else
 			themeName = _gtkThemeName;
-		if (themeName != null && (themeName.EndsWith("-dark", StringComparison.OrdinalIgnoreCase)
-			|| themeName.EndsWith(":dark", StringComparison.OrdinalIgnoreCase)))
-			return true;
-		return false;
+		return IsDarkThemeName(themeName);
 	}
 
-	public void SetTheme()
+	public void SetTheme() => SetTheme(null);
+
+	internal void SetTheme(uint? portalColorScheme)
 	{
 		var settings = Gtk.Settings.Default;
 
@@ -179,6 +213,9 @@ public class ThemeHandler : WidgetHandler<GtkThemeStyle?, Theme>, Theme.IHandler
 			case GtkThemeStyle.System:
 				settings.ResetProperty("gtk-theme-name");
 				settings.ResetProperty("gtk-application-prefer-dark-theme");
+				// With no portal preference, leave this reset so it continues to follow the GTK session value.
+				if (portalColorScheme != null)
+					settings.ApplicationPreferDarkTheme = portalColorScheme == 1;
 				break;
 			case GtkThemeStyle.Light:
 				settings.ApplicationPreferDarkTheme = false;

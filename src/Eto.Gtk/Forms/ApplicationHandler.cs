@@ -13,8 +13,13 @@ namespace Eto.GtkSharp.Forms
 		bool attached;
 		Gtk.StatusIcon statusIcon;
 		readonly List<ManualResetEvent> invokeResetEvents = new List<ManualResetEvent>();
+		LinuxSystemTheme _systemTheme;
+		ThemeStyle? _lastDetectedTheme;
+		uint? _portalColorScheme;
+		bool _themeNotificationsAttached;
 
 		public static ApplicationHandler Instance => Eto.Forms.Application.Instance?.Handler as ApplicationHandler;
+		internal uint? PortalColorScheme => _portalColorScheme;
 
 		protected override void Initialize()
 		{
@@ -31,6 +36,13 @@ namespace Eto.GtkSharp.Forms
 #else
 			Helper.UseHeaderBar = false;
 #endif
+			ThemeHandler.EnsureSystemDefaults();
+			_lastDetectedTheme = ThemeHandler.GetSystemThemeStyle(_portalColorScheme);
+			if (EtoEnvironment.Platform.IsLinux)
+			{
+				_systemTheme = new LinuxSystemTheme(OnPortalColorSchemeChanged, AsyncInvoke);
+				_systemTheme.Start();
+			}
 		}
 
 		void OnUnhandledException(GLib.UnhandledExceptionArgs e)
@@ -323,10 +335,14 @@ namespace Eto.GtkSharp.Forms
 				case Eto.Forms.Application.IsActiveChangedEvent:
 					break;
 				case Eto.Forms.Application.ThemeChangedEvent:
-					// Listen for OS/system theme changes via GtkSettings property notifications
-					var settings = Gtk.Settings.Default;
-					settings.AddNotification("gtk-theme-name", OnSettingsThemeChanged);
-					settings.AddNotification("gtk-application-prefer-dark-theme", OnSettingsThemeChanged);
+					if (!_themeNotificationsAttached)
+					{
+						// Listen for OS/system theme changes via GtkSettings property notifications
+						var settings = Gtk.Settings.Default;
+						settings.AddNotification("gtk-theme-name", OnSettingsThemeChanged);
+						settings.AddNotification("gtk-application-prefer-dark-theme", OnSettingsThemeChanged);
+						_themeNotificationsAttached = true;
+					}
 					break;
 				default:
 					base.AttachEvent(id);
@@ -374,12 +390,37 @@ namespace Eto.GtkSharp.Forms
 		Theme _currentTheme;
 		bool _settingTheme;
 
+		bool IsSystemTheme => _currentTheme == null
+			|| _currentTheme.Handler is ThemeHandler { Control: GtkThemeStyle.System };
+
 		void OnSettingsThemeChanged(object o, GLib.NotifyArgs args)
 		{
-			if (_settingTheme)
+			if (_settingTheme || !IsSystemTheme)
 				return;
-			// OS theme changed externally, reset cached theme so it's re-read
-			_currentTheme = null;
+			_lastDetectedTheme = ThemeHandler.GetSystemThemeStyle(_portalColorScheme);
+			Callback.OnThemeChanged(Widget, EventArgs.Empty);
+		}
+
+		void OnPortalColorSchemeChanged(uint? colorScheme)
+		{
+			colorScheme = ThemeHandler.NormalizePortalColorScheme(colorScheme);
+			if (_portalColorScheme == colorScheme)
+				return;
+			_portalColorScheme = colorScheme;
+			if (!IsSystemTheme)
+				return;
+
+			ApplyTheme(Theme);
+			CheckAndUpdateSystemTheme();
+		}
+
+		void CheckAndUpdateSystemTheme()
+		{
+			var detectedTheme = ThemeHandler.GetSystemThemeStyle(_portalColorScheme);
+			if (_lastDetectedTheme == detectedTheme)
+				return;
+
+			_lastDetectedTheme = detectedTheme;
 			Callback.OnThemeChanged(Widget, EventArgs.Empty);
 		}
 
@@ -389,20 +430,48 @@ namespace Eto.GtkSharp.Forms
 			set
 			{
 				_currentTheme = value;
-				if (value?.Handler is ThemeHandler handler)
-				{
-					_settingTheme = true;
-					try
-					{
-						handler.SetTheme();
-					}
-					finally
-					{
-						_settingTheme = false;
-					}
-				}
+				ApplyTheme(value);
+				_lastDetectedTheme = IsSystemTheme ? ThemeHandler.GetSystemThemeStyle(_portalColorScheme) : null;
 				Callback.OnThemeChanged(Widget, EventArgs.Empty);
 			}
+		}
+
+		void ApplyTheme(Theme theme)
+		{
+			if (theme?.Handler is not ThemeHandler handler)
+				return;
+
+			_settingTheme = true;
+			try
+			{
+				handler.SetTheme(_portalColorScheme);
+			}
+			finally
+			{
+				_settingTheme = false;
+			}
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				_systemTheme?.Dispose();
+				_systemTheme = null;
+				if (_themeNotificationsAttached)
+				{
+					var settings = Gtk.Settings.Default;
+					settings.RemoveNotification("gtk-theme-name", OnSettingsThemeChanged);
+					settings.RemoveNotification("gtk-application-prefer-dark-theme", OnSettingsThemeChanged);
+					_themeNotificationsAttached = false;
+				}
+				if (_portalColorScheme != null && IsSystemTheme)
+				{
+					_portalColorScheme = null;
+					ApplyTheme(_currentTheme);
+				}
+			}
+			base.Dispose(disposing);
 		}
 
 		private void RestartInternal()

@@ -38,36 +38,46 @@ namespace Eto.GtkSharp.Drawing
 
 		const int sICONDIR = 6;            // sizeof(ICONDIR) 
 		const int sICONDIRENTRY = 16;      // sizeof(ICONDIRENTRY)
+		static readonly byte[] pngSignature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
 
 		public Gdk.Pixbuf[] SplitIcon(MemoryStream input)
 		{
 			// Get multiple .ico file image.
 			byte[] srcBuf = input.ToArray();
+			if (srcBuf.Length < sICONDIR)
+				throw new InvalidDataException("Icon not a valid format");
 
 			var splitIcons = new List<Gdk.Pixbuf> ();
 			int count = BitConverter.ToInt16 (srcBuf, 4); // ICONDIR.idCount
+			if (count <= 0 || count > (srcBuf.Length - sICONDIR) / sICONDIRENTRY)
+				throw new InvalidDataException("Icon not a valid format");
 
 			for (int i = 0; i < count; i++) {
+				int entryOffset = sICONDIR + sICONDIRENTRY * i;
+				int imgSize = BitConverter.ToInt32(srcBuf, entryOffset + 8); // ICONDIRENTRY.dwBytesInRes
+				int imgOffset = BitConverter.ToInt32(srcBuf, entryOffset + 12); // ICONDIRENTRY.dwImageOffset
+				if (imgOffset < 0 || imgSize < 0 || imgOffset > srcBuf.Length - imgSize)
+					throw new InvalidDataException("Icon not a valid format");
+
+				// PNG-compressed ICO entries are already complete images. Wrapping one in another ICO
+				// container makes GDK report "Compressed icons are not supported".
+				if (HasPngSignature(srcBuf, imgOffset, imgSize))
+				{
+					using (var imageStream = new MemoryStream(srcBuf, imgOffset, imgSize, false))
+						splitIcons.Add(new Gdk.Pixbuf(imageStream));
+					continue;
+				}
+
 				using (var destStream = new MemoryStream ())
 				using (var writer = new BinaryWriter (destStream)) {
 					// Copy ICONDIR and ICONDIRENTRY.
-					int pos = 0;
-					writer.Write (srcBuf, pos, sICONDIR - 2);
+					writer.Write (srcBuf, 0, sICONDIR - 2);
 					writer.Write ((short)1);    // ICONDIR.idCount == 1;
 
-					pos += sICONDIR;
-					pos += sICONDIRENTRY * i;
-
-					writer.Write (srcBuf, pos, sICONDIRENTRY - 4); // write out icon info (minus old offset)
+					writer.Write (srcBuf, entryOffset, sICONDIRENTRY - 4); // write out icon info (minus old offset)
 					writer.Write (sICONDIR + sICONDIRENTRY);    // write offset of icon data
-					pos += 8;
 
 					// Copy picture and mask data.
-					int imgSize = BitConverter.ToInt32 (srcBuf, pos);       // ICONDIRENTRY.dwBytesInRes
-					pos += 4;
-					int imgOffset = BitConverter.ToInt32 (srcBuf, pos);    // ICONDIRENTRY.dwImageOffset
-					if (imgOffset + imgSize > srcBuf.Length)
-						throw new InvalidDataException("Icon not a valid format");
 					writer.Write (srcBuf, imgOffset, imgSize);
 					writer.Flush ();
 
@@ -78,6 +88,18 @@ namespace Eto.GtkSharp.Drawing
 			}
 
 			return splitIcons.ToArray ();
+		}
+
+		static bool HasPngSignature(byte[] buffer, int offset, int length)
+		{
+			if (length < pngSignature.Length)
+				return false;
+
+			for (int i = 0; i < pngSignature.Length; i++)
+				if (buffer[offset + i] != pngSignature[i])
+					return false;
+
+			return true;
 		}
 
 

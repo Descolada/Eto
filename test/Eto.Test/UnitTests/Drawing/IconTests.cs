@@ -47,6 +47,45 @@ namespace Eto.Test.UnitTests.Drawing
 			Assert.That(icon.Frames.All(r => r.Scale == 1), Is.True, "#4");
 		}
 
+		[Test]
+		public void IconFromIcoShouldSupportPngCompressedFrames()
+		{
+			var dibIcon = ReadResource("Eto.Test.Images.TestIcon.ico");
+			var png = ReadResource("Eto.Test.Images.TestImage.png");
+			const int headerSize = 6;
+			const int entrySize = 16;
+			const int frameCount = 2;
+			var dibSize = BitConverter.ToInt32(dibIcon, headerSize + 8);
+			var dibOffset = BitConverter.ToInt32(dibIcon, headerSize + 12);
+			var dataOffset = headerSize + entrySize * frameCount;
+
+			using var stream = new MemoryStream();
+			using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, true);
+			writer.Write(dibIcon, 0, headerSize - 2);
+			writer.Write((short)frameCount);
+			writer.Write(dibIcon, headerSize, entrySize - 4);
+			writer.Write(dataOffset);
+			writer.Write((byte)128); // width
+			writer.Write((byte)128); // height
+			writer.Write((byte)0); // color count
+			writer.Write((byte)0); // reserved
+			writer.Write((short)1); // color planes
+			writer.Write((short)32); // bits per pixel
+			writer.Write(png.Length);
+			writer.Write(dataOffset + dibSize);
+			writer.Write(dibIcon, dibOffset, dibSize);
+			writer.Write(png);
+			writer.Flush();
+			stream.Position = 0;
+
+			using var icon = new Icon(stream);
+			Assert.That(icon.Frames.Select(r => r.PixelSize), Is.EquivalentTo(new[]
+			{
+				new Size(16, 16),
+				new Size(128, 128)
+			}));
+		}
+
 		[TestCase(.50f, 64, null)]
 		[TestCase(.25f, 32, null)]
 		[TestCase(1, 128, null)]
@@ -149,6 +188,13 @@ namespace Eto.Test.UnitTests.Drawing
 				return imageView;
 			});
 		}
+
+		byte[] ReadResource(string name)
+		{
+			using var source = GetType().Assembly.GetManifestResourceStream(name);
+			using var destination = new MemoryStream();
+			source.CopyTo(destination);
+			return destination.ToArray();
+		}
 	}
 }
-

@@ -13,7 +13,7 @@ namespace Eto.Direct2D.Drawing
 	/// </summary>
 	/// <copyright>(c) 2013 by Vivek Jhaveri</copyright>
 	/// <license type="BSD-3">See LICENSE for full terms</license>
-	public partial class GraphicsHandler : WidgetHandler<sd.RenderTarget, Graphics>, Graphics.IHandler
+	public partial class GraphicsHandler : WidgetHandler<sd.RenderTarget, Graphics>, Graphics.IIntersectClipHandler
 	{
 		bool hasBegan;
 		bool rectClip;
@@ -199,12 +199,11 @@ namespace Eto.Direct2D.Drawing
 			{
 				if (Control != null)
 				{
-					// not very efficient, but works
-					s.Matrix3x2 transform = currentTransform;
-					transform.Invert();
-					var topleft = s.Matrix3x2.TransformPoint(transform, clipBounds.TopLeft.ToDx()).ToEto();
-					var bottomright = s.Matrix3x2.TransformPoint(transform, clipBounds.BottomRight.ToDx()).ToEto();
-					return RectangleF.FromSides(topleft.X, topleft.Y, bottomright.X, bottomright.Y);
+					using (var transform = currentTransform.ToEto())
+					{
+						transform.Invert();
+						return transform.TransformRectangle(clipBounds);
+					}
 				}
 				else
 					return new RectangleF();
@@ -213,26 +212,88 @@ namespace Eto.Direct2D.Drawing
 
 		public void SetClip(RectangleF rect)
 		{
+			SetOffset(true);
 			ResetClip();
-			clipBounds = rect;
+			var rectangleGeometry = new sd.RectangleGeometry(SDFactory.D2D1Factory, rect.ToDx());
+			var transformedGeometry = new sd.TransformedGeometry(SDFactory.D2D1Factory, rectangleGeometry, currentTransform);
+			clipBounds = transformedGeometry.GetBounds().ToEto();
+			transformedGeometry.Dispose();
+			rectangleGeometry.Dispose();
+			clipGeometry = new sd.RectangleGeometry(SDFactory.D2D1Factory, clipBounds.ToDx());
 			rectClip = true;
 			Control.PushAxisAlignedClip(rect.ToDx(), Control.AntialiasMode);
 		}
 
 		public void SetClip(IGraphicsPath path)
 		{
+			SetOffset(true);
 			ResetClip();
-			clipBounds = path.Bounds;
+			clipGeometry = CreateClipGeometry(path);
+			clipBounds = clipGeometry.GetBounds().ToEto();
+			PushClipLayer();
+		}
+
+		sd.Geometry CreateClipGeometry(IGraphicsPath path)
+		{
+			if (!path.IsEmpty)
+				return new sd.TransformedGeometry(SDFactory.D2D1Factory, path.ToGeometry(), currentTransform);
+
+			var geometry = new sd.PathGeometry(SDFactory.D2D1Factory);
+			var sink = geometry.Open();
+			sink.Close();
+			sink.Dispose();
+			return geometry;
+		}
+
+		void PushClipLayer()
+		{
+			var transform = Control.Transform;
+			Control.Transform = s.Matrix3x2.Identity;
 			var parameters = new sd.LayerParameters
 			{
 				ContentBounds = clipBounds.ToDx(),
-				GeometricMask = clipGeometry = path.ToGeometry(),
+				GeometricMask = clipGeometry,
 				MaskAntialiasMode = Control.AntialiasMode,
 				MaskTransform = s.Matrix3x2.Identity,
 				Opacity = 1f
 			};
 			clipParams = parameters;
 			Control.PushLayer(ref parameters, HelperLayer);
+			Control.Transform = transform;
+		}
+
+		public void IntersectClip(IGraphicsPath path)
+		{
+			if (clipGeometry == null)
+			{
+				SetClip(path);
+				return;
+			}
+
+			SetOffset(true);
+			var pathGeometry = CreateClipGeometry(path);
+			var intersection = new sd.PathGeometry(SDFactory.D2D1Factory);
+			var sink = intersection.Open();
+			clipGeometry.Combine(pathGeometry, sd.CombineMode.Intersect, sink);
+			sink.Close();
+			sink.Dispose();
+			pathGeometry.Dispose();
+
+			if (clipParams != null)
+			{
+				Control.PopLayer();
+				clipParams = null;
+			}
+			else if (rectClip)
+			{
+				Control.PopAxisAlignedClip();
+				rectClip = false;
+			}
+
+			clipGeometry.Dispose();
+			clipGeometry = intersection;
+			clipBounds = intersection.GetBounds().ToEto();
+			PushClipLayer();
 		}
 
 		public void ResetClip()
@@ -240,15 +301,19 @@ namespace Eto.Direct2D.Drawing
 			if (clipParams != null)
 			{
 				Control.PopLayer();
-				clipBounds = new RectangleF(Control.Size.ToEto());
 				clipParams = null;
 			}
 			if (rectClip)
 			{
 				Control.PopAxisAlignedClip();
 				rectClip = false;
-				clipBounds = new RectangleF(Control.Size.ToEto());
 			}
+			if (clipGeometry != null)
+			{
+				clipGeometry.Dispose();
+				clipGeometry = null;
+			}
+			clipBounds = new RectangleF(Control.Size.ToEto());
 		}
 
         void SetTransform(s.Matrix3x2 transform)
@@ -533,6 +598,8 @@ namespace Eto.Direct2D.Drawing
 						var bmp = copy.ToDx(Control);
 
 						Control.BeginDraw();
+						var transform = Control.Transform;
+						Control.Transform = s.Matrix3x2.Identity;
 
 						// clear existing contents
 						Control.Clear(null);
@@ -545,6 +612,8 @@ namespace Eto.Direct2D.Drawing
 						var geom = new sd.RectangleGeometry(SDFactory.D2D1Factory, bounds);
 						geom.Combine(clipGeometry, sd.CombineMode.Exclude, sink);
 						sink.Close();
+						sink.Dispose();
+						geom.Dispose();
 
 						// create a new mask layer with inverse geometry
 						var parameters = new sd.LayerParameters
@@ -560,10 +629,11 @@ namespace Eto.Direct2D.Drawing
 						// draw bitmap of contents back, clipping to the inverse of the clip region
 						Control.DrawBitmap(bmp, 1f, sd.BitmapInterpolationMode.NearestNeighbor);
 						Control.PopLayer();
+						inverse.Dispose();
+						Control.Transform = transform;
 
 						// restore our clip path
-						parameters = clipParams.Value;
-						Control.PushLayer(ref parameters, HelperLayer);
+						PushClipLayer();
 
 						copy.Dispose();
 					}

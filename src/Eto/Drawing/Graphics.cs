@@ -1050,7 +1050,7 @@ public class Graphics : Widget
 	/// </summary>
 	/// <remarks>
 	/// The previous clipping region will be cleared after this call.
-	/// The rectangle specified is translated by the current transform, but is not affected by subsequent transform operations.
+	/// The rectangle specified is transformed by the current transform, but is not affected by subsequent transform operations.
 	/// </remarks>
 	/// <param name="rectangle">Rectangle for the clipping region</param>
 	public void SetClip(RectangleF rectangle)
@@ -1063,12 +1063,36 @@ public class Graphics : Widget
 	/// </summary>
 	/// <remarks>
 	/// The previous clipping region will be cleared after this call
-	/// The path specified is translated by the current transform, but is not affected by subsequent transform operations.
+	/// The path specified is transformed by the current transform, but is not affected by subsequent transform operations.
 	/// </remarks>
 	/// <param name="path">Path to specify the clip region</param>
 	public void SetClip(IGraphicsPath path)
 	{
 		Handler.SetClip(path);
+	}
+
+	/// <summary>
+	/// Intersects the current clip region with the specified <paramref name="path"/>.
+	/// </summary>
+	/// <remarks>
+	/// Each call reduces the current clip region using the path's <see cref="IGraphicsPath.FillMode"/>.
+	/// Use <see cref="SetClip(RectangleF)"/> or <see cref="SetClip(IGraphicsPath)"/> to replace the clip region,
+	/// or <see cref="ResetClip"/> to reset it.
+	/// The path is transformed by the current transform when this method is called. Subsequent changes to the path
+	/// or transform do not affect the clip region, and the path may be disposed after this method returns.
+	/// </remarks>
+	/// <param name="path">Path to intersect with the current clip region.</param>
+	/// <exception cref="ArgumentNullException"><paramref name="path"/> is <see langword="null"/>.</exception>
+	/// <exception cref="NotSupportedException">The current platform handler does not support path clip intersection.</exception>
+	public void IntersectClip(IGraphicsPath path)
+	{
+		if (path == null)
+			throw new ArgumentNullException(nameof(path));
+
+		if (Handler is not IIntersectClipHandler intersectHandler)
+			throw new NotSupportedException("The current platform does not support path clip intersection.");
+
+		intersectHandler.IntersectClip(path);
 	}
 
 	/// <summary>
@@ -1409,6 +1433,16 @@ public class Graphics : Widget
 		/// <param name="brush">Brush to clear the graphics context</param>
 		void Clear(SolidBrush brush);
 
+	}
+
+	/// <summary>
+	/// Optional platform handler capability for intersecting the current clip with a path.
+	/// </summary>
+	public interface IIntersectClipHandler : IHandler
+	{
+		/// <summary>Intersects the current clip with the specified path.</summary>
+		/// <param name="path">Path to intersect with the current clip region</param>
+		void IntersectClip(IGraphicsPath path);
 	}
 	#endregion
 

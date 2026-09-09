@@ -5,14 +5,14 @@ namespace Eto.Wpf.Drawing
     /// </summary>
     /// <copyright>(c) 2012-2014 by Curtis Wensley</copyright>
     /// <license type="BSD-3">See LICENSE for full terms</license>
-    public class GraphicsHandler : WidgetHandler<swm.DrawingContext, Graphics>, Graphics.IHandler
+    public class GraphicsHandler : WidgetHandler<swm.DrawingContext, Graphics>, Graphics.IIntersectClipHandler
     {
         swm.Visual visual;
         swm.DrawingGroup group;
         swm.DrawingVisual drawingVisual;
         RectangleF? clipBounds;
         RectangleF initialClip;
-        swm.PathGeometry clipPath;
+        swm.Geometry clipPath;
         sw.Rect bounds;
         readonly bool disposeControl;
 		bool isOffset;
@@ -585,6 +585,7 @@ namespace Eto.Wpf.Drawing
 
 		public void SetClip(RectangleF rectangle)
 		{
+			SetOffset(true);
 			RewindTransform();
 			RewindClip();
 			if (transforms != null && transforms.Current != null)
@@ -598,12 +599,32 @@ namespace Eto.Wpf.Drawing
 
 		public void SetClip(IGraphicsPath path)
 		{
+			SetOffset(true);
 			RewindTransform();
 			RewindClip();
 			path = path.Clone();
 			if (transforms != null && transforms.Current != null)
 				path.Transform(transforms.Current);
             clipPath = path.ToWpf(); // require a clone so changes to path don't affect current clip
+			clipBounds = clipPath.Bounds.ToEtoF();
+			ApplyClip();
+			ApplyTransform();
+		}
+
+		public void IntersectClip(IGraphicsPath path)
+		{
+			SetOffset(true);
+			RewindTransform();
+			RewindClip();
+			path = path.Clone();
+			if (transforms != null && transforms.Current != null)
+				path.Transform(transforms.Current);
+			var intersectPath = path.ToWpf();
+			clipPath = clipPath != null
+				? new swm.CombinedGeometry(swm.GeometryCombineMode.Intersect, clipPath, intersectPath)
+				: clipBounds != null
+					? new swm.CombinedGeometry(swm.GeometryCombineMode.Intersect, new swm.RectangleGeometry(clipBounds.Value.ToWpf()), intersectPath)
+					: intersectPath;
 			clipBounds = clipPath.Bounds.ToEtoF();
 			ApplyClip();
 			ApplyTransform();

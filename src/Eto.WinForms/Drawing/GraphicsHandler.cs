@@ -6,7 +6,7 @@ namespace Eto.WinForms.Drawing
 	/// </summary>
 	/// <copyright>(c) 2012-2014 by Curtis Wensley</copyright>
 	/// <license type="BSD-3">See LICENSE for full terms</license>
-	public class GraphicsHandler : WidgetHandler<System.Drawing.Graphics, Graphics>, Graphics.IHandler
+	public class GraphicsHandler : WidgetHandler<System.Drawing.Graphics, Graphics>, Graphics.IIntersectClipHandler
 	{
 		Stack<sd.Drawing2D.Matrix> savedTransforms;
 
@@ -469,6 +469,11 @@ namespace Eto.WinForms.Drawing
 		public void SetClip(IGraphicsPath path)
 		{
 			this.Control.SetClip(path.ToSD());
+		}
+
+		public void IntersectClip(IGraphicsPath path)
+		{
+			this.Control.SetClip(path.ToSD(), sd2.CombineMode.Intersect);
 		}
 
 		public void ResetClip()

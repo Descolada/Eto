@@ -14,16 +14,16 @@ namespace Eto.Android.Drawing
 	/// </summary>
 	/// <copyright>(c) 2013 by Vivek Jhaveri</copyright>
 	/// <license type="BSD-3">See LICENSE for full terms</license>
-	public class GraphicsHandler : WidgetHandler<ag.Canvas, Graphics>, Graphics.IHandler
+	public class GraphicsHandler : WidgetHandler<ag.Canvas, Graphics>, Graphics.IIntersectClipHandler
 	{
 		// Android does not allow the clip region to expand, only shrink, except by saving/restoring
 		// the drawing state stack. Eto interface requires being able to change the clip region at any time.
-		// To work around this, without having to save our own stack of all transform/clip changes, we only 
-		// save apply the clip region to the canvas right before drawing, and immediately undo it before any
+		// To work around this, without having to save our own stack of all transform/clip changes, we only
+		// apply the clip region to the canvas right before drawing, and immediately undo it before any
 		// methods which modify, save or restore the transform matrix.
-		private RectangleF clipRect;
-		private IMatrix clipMatrix;
-		private Boolean isClipApplied;
+		private List<ag.Path>? clipPaths;
+		private RectangleF clipBounds;
+		private bool isClipApplied;
 
 		public GraphicsHandler(ag.Canvas canvas)
 		{
@@ -296,45 +296,108 @@ namespace Eto.Android.Drawing
 
 		public RectangleF ClipBounds
 		{
-			get { return clipRect; }
+			get
+			{
+				if (clipPaths == null)
+					return RectangleF.Empty;
+
+				using var transform = Control.Matrix;
+				using var inverse = new ag.Matrix();
+				using var bounds = clipBounds.ToAndroid();
+				transform.Invert(inverse);
+				inverse.MapRect(bounds);
+				return bounds.ToEto();
+			}
 		}
 
 		public void SetClip(RectangleF rectangle)
 		{
-			UnapplyClip();
-			clipRect = rectangle;
-			clipMatrix = CurrentTransform;
+			using var transform = Control.Matrix;
+			using var bounds = rectangle.ToAndroid();
+			transform.MapRect(bounds);
+			var path = new ag.Path();
+			path.AddRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom, ag.Path.Direction.Cw);
+			SetClip(path);
 		}
 
 		public void SetClip(IGraphicsPath path)
 		{
-			// NOTE: This may not work with hardware acceleration.
-			// See http://developer.android.com/guide/topics/graphics/hardware-accel.html#drawing-support
-			// See http://stackoverflow.com/questions/16889815/canvas-clippath-only-works-on-android-emulator
+			SetClip(ToAbsoluteClip(new ag.Path(path.ToAndroid())));
+		}
 
-			SetClip(path.Bounds);
+		public void IntersectClip(IGraphicsPath path)
+		{
+			UnapplyClip();
+			AddClip(ToAbsoluteClip(new ag.Path(path.ToAndroid())));
 		}
 
 		public void ResetClip()
 		{
 			UnapplyClip();
-			clipRect = RectangleF.Empty;
+			DisposeClips();
+		}
+
+		private void SetClip(ag.Path path)
+		{
+			UnapplyClip();
+			DisposeClips();
+			AddClip(path);
+		}
+
+		private void AddClip(ag.Path path)
+		{
+			using var bounds = new ag.RectF();
+			path.ComputeBounds(bounds, true);
+			var pathBounds = bounds.ToEto();
+
+			if (clipPaths == null)
+			{
+				clipPaths = new List<ag.Path>();
+				clipBounds = pathBounds;
+			}
+			else
+				clipBounds.Intersect(pathBounds);
+
+			clipPaths.Add(path);
+		}
+
+		private ag.Path ToAbsoluteClip(ag.Path path)
+		{
+			using var transform = Control.Matrix;
+			path.Transform(transform);
+			return path;
+		}
+
+		private void DisposeClips()
+		{
+			if (clipPaths == null)
+				return;
+
+			foreach (var path in clipPaths)
+				path.Dispose();
+
+			clipPaths = null;
+			clipBounds = RectangleF.Empty;
 		}
 
 		private void ApplyClip()
 		{
-			if (isClipApplied || clipRect.IsEmpty)
+			if (isClipApplied || clipPaths == null)
 				return;
-
-			// Get the absolute clipping rectangle as it would've been at the time it was set
-			var AbsoluteClip = clipMatrix.TransformRectangle(clipRect);
-
-			// Apply inverse of current transform (it will be re-applied by Android later to get back to the same absolute bounds)
-			var UntransformedClip = CurrentTransform.Inverse().TransformRectangle(AbsoluteClip);
 
 			Control.Save(ag.SaveFlags.Clip);
 
-			Control.ClipRect(UntransformedClip.ToAndroid());
+			using var transform = Control.Matrix;
+			using var inverse = new ag.Matrix();
+			transform.Invert(inverse);
+
+			foreach (var path in clipPaths)
+			{
+				using var transformedPath = new ag.Path(path);
+				transformedPath.Transform(inverse);
+				Control.ClipPath(transformedPath);
+			}
+
 			isClipApplied = true;
 		}
 
@@ -345,6 +408,17 @@ namespace Eto.Android.Drawing
 
 			Control.Restore();
 			isClipApplied = false;
+		}
+
+		protected override void Dispose(bool disposing)
+		{
+			if (disposing)
+			{
+				UnapplyClip();
+				DisposeClips();
+			}
+
+			base.Dispose(disposing);
 		}
 
 		public void Clear(SolidBrush brush)

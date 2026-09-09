@@ -196,8 +196,10 @@ namespace Eto.iOS.Drawing
 				transform = matrix;
 			else
 				transform.Prepend(matrix);
+
 			var path = new CGPath();
 			path.AddPath(matrix.ToCG(), Control);
+			Control.Dispose();
 			Control = path;
 		}
 
@@ -240,7 +242,7 @@ namespace Eto.iOS.Drawing
 
 		public FillMode FillMode { get; set; }
 
-		public IGraphicsPath Clone() => new GraphicsPathHandler(new CGPath(Control));
+		public IGraphicsPath Clone() => new GraphicsPathHandler(new CGPath(Control)) { FillMode = FillMode };
 
 		public bool FillContains(PointF point)
 		{

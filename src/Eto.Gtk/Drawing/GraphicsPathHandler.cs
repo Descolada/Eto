@@ -639,6 +639,7 @@ namespace Eto.GtkSharp.Drawing
 			handler._transform = _transform?.Clone();
 			handler._firstFigureClosed = _firstFigureClosed;
 			handler._isFirstFigure = _isFirstFigure;
+			handler.FillMode = FillMode;
 			return handler;
 		}
 

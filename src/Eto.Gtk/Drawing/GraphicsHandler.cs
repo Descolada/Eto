@@ -1,14 +1,14 @@
 using GLib;
 namespace Eto.GtkSharp.Drawing
 {
-	public class GraphicsHandler : WidgetHandler<Cairo.Context, Graphics>, Graphics.IHandler
+	public class GraphicsHandler : WidgetHandler<Cairo.Context, Graphics>, Graphics.IIntersectClipHandler
 	{
 		Pango.Context pangoContext;
 		readonly Gtk.Widget widget;
 		Image image;
 		Cairo.ImageSurface surface;
 		RectangleF? clipBounds;
-		IGraphicsPath clipPath;
+		readonly List<IGraphicsPath> clipPaths = new List<IGraphicsPath>();
 		Cairo.Matrix currentTransform = new Cairo.Matrix();
 		Stack<Cairo.Matrix> transforms;
 		bool disposeControl = true;
@@ -418,7 +418,10 @@ namespace Eto.GtkSharp.Drawing
 		protected override void Dispose(bool disposing)
 		{
 			if (disposing)
+			{
 				ReverseAll();
+				ClearClipState();
+			}
 			if (image != null)
 			{
 				Flush(false);
@@ -503,24 +506,40 @@ namespace Eto.GtkSharp.Drawing
 			}
 		}
 
+		void ClearClipState()
+		{
+			foreach (var path in clipPaths)
+				path.Dispose();
+
+			clipPaths.Clear();
+			clipBounds = null;
+		}
+
 		void ReverseClip()
 		{
-			if (clipBounds != null)
+			if (clipBounds != null || clipPaths.Count != 0)
 				Control.ResetClip();
+		}
+
+		void ApplyPathClip(IGraphicsPath path)
+		{
+			var fillRule = Control.FillRule;
+			path.Apply(Control);
+			Control.FillRule = path.FillMode.ToCairo();
+			Control.Clip();
+			Control.FillRule = fillRule;
 		}
 
 		void ApplyClip()
 		{
-			if (clipPath != null)
-			{
-				clipPath.Apply(Control);
-				Control.Clip();
-			}
-			else if (clipBounds != null)
+			if (clipBounds != null)
 			{
 				Control.Rectangle(clipBounds.Value.ToCairo());
 				Control.Clip();
 			}
+
+			foreach (var path in clipPaths)
+				ApplyPathClip(path);
 		}
 
 		void ReverseTransform()
@@ -569,13 +588,16 @@ namespace Eto.GtkSharp.Drawing
 			get
 			{
 #if GTK2
-				var bounds = clipBounds ?? (widget != null ? (RectangleF)widget.Allocation.ToEto() : RectangleF.Empty);
+				var bounds = clipBounds;
+				foreach (var path in clipPaths)
+					bounds = bounds == null ? path.Bounds : RectangleF.Intersect(bounds.Value, path.Bounds);
+				bounds = bounds ?? (widget != null ? (RectangleF)widget.Allocation.ToEto() : RectangleF.Empty);
 				var matrix = Control.Matrix;
 				if (matrix.IsIdentity())
-					return bounds;
+					return bounds.Value;
 				var etoMatrix = matrix.ToEto();
 				etoMatrix.Invert();
-				return etoMatrix.TransformRectangle(bounds);
+				return etoMatrix.TransformRectangle(bounds.Value);
 #else
 				var bounds = clipBounds;
 				if (bounds == null)
@@ -598,30 +620,46 @@ namespace Eto.GtkSharp.Drawing
 
 		public void SetClip(RectangleF rectangle)
 		{
+			SetOffset(true);
+			var transformedRectangle = currentTransform.ToEto().TransformRectangle(rectangle);
 			ReverseTransform();
-			ResetClip();
-			clipBounds = currentTransform.ToEto().TransformRectangle(rectangle);
-			clipPath = null;
+			Control.ResetClip();
+			ClearClipState();
+			clipBounds = transformedRectangle;
 			ApplyClip();
 			ApplyTransform();
 		}
 
 		public void SetClip(IGraphicsPath path)
 		{
-			ReverseTransform();
-			ResetClip();
+			SetOffset(true);
 			path = path.Clone();
 			path.Transform(currentTransform.ToEto());
-			clipPath = path;
-			clipBounds = path.Bounds;
+			ReverseTransform();
+			Control.ResetClip();
+			ClearClipState();
+			clipPaths.Add(path);
 			ApplyClip();
+			ApplyTransform();
+		}
+
+		public void IntersectClip(IGraphicsPath path)
+		{
+			SetOffset(true);
+			path = path.Clone();
+			path.Transform(currentTransform.ToEto());
+			ReverseTransform();
+			clipPaths.Add(path);
+			ApplyPathClip(path);
 			ApplyTransform();
 		}
 
 		public void ResetClip()
 		{
-			clipBounds = null;
+			ReverseTransform();
 			Control.ResetClip();
+			ClearClipState();
+			ApplyTransform();
 		}
 
 		public void Clear(SolidBrush brush)

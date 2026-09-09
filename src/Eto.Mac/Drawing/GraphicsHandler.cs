@@ -33,7 +33,7 @@ namespace Eto.iOS.Drawing
 	/// </summary>
 	/// <copyright>(c) 2012-2014 by Curtis Wensley</copyright>
 	/// <license type="BSD-3">See LICENSE for full terms</license>
-	public class GraphicsHandler : GraphicsBase, Graphics.IHandler
+	public class GraphicsHandler : GraphicsBase, Graphics.IIntersectClipHandler
 	{
 		#if OSX
 		NSGraphicsContext graphicsContext;
@@ -42,7 +42,7 @@ namespace Eto.iOS.Drawing
 		float height;
 		bool isOffset;
 		CGRect? clipBounds;
-		IGraphicsPath clipPath;
+		readonly List<IGraphicsPath> clipPaths = new List<IGraphicsPath>();
 		readonly Stack<CGAffineTransform> transforms = new Stack<CGAffineTransform>();
 		CGAffineTransform currentTransform = CGAffineTransform.MakeIdentity();
 		static readonly CGColorSpace patternColorSpace = CGColorSpace.CreatePattern(null);
@@ -115,6 +115,7 @@ namespace Eto.iOS.Drawing
 			{
 				_formattedText?.Dispose();
 				_formattedText = null;
+				ClearClipState();
 			}
 			base.Dispose(disposing);
 		}
@@ -221,6 +222,7 @@ namespace Eto.iOS.Drawing
 			RewindAll();
 			// initial save state
 			Control.RestoreState();
+			ClearClipState();
 		}
 
 		public void Flush()
@@ -625,58 +627,78 @@ namespace Eto.iOS.Drawing
 			get { return Control.GetClipBoundingBox().ToEto(); }
 		}
 
+		bool HasClip => clipBounds != null || clipPaths.Count != 0;
+
+		void ClearClipState()
+		{
+			foreach (var path in clipPaths)
+				path.Dispose();
+
+			clipPaths.Clear();
+			clipBounds = null;
+		}
+
 		public void SetClip(RectangleF rectangle)
 		{
+			SetOffset(true);
+			var transformedRectangle = currentTransform.TransformRect(rectangle.ToNS());
 			RewindTransform();
 			RewindClip();
-			clipPath = null;
-			clipBounds = currentTransform.TransformRect(rectangle.ToNS());
+			ClearClipState();
+			clipBounds = transformedRectangle;
 			ApplyClip();
 			ApplyTransform();
 		}
 
 		public void SetClip(IGraphicsPath path)
 		{
+			SetOffset(true);
+			path = path.Clone();
+			path.Transform(currentTransform.ToEto());
 			RewindTransform();
 			RewindClip();
-			clipBounds = null;
-			clipPath = path.Clone();
-			clipPath.Transform(currentTransform.ToEto());
+			ClearClipState();
+			clipPaths.Add(path);
 			ApplyClip();
 			ApplyTransform();
 		}
 
+		void ApplyPathClip(IGraphicsPath path)
+		{
+			Control.AddPath(path.ToCG());
+			Clip(path.FillMode);
+		}
+
 		void ApplyClip()
 		{
-			if (clipPath != null)
-			{
+			if (HasClip)
 				Control.SaveState();
-				Control.AddPath(clipPath.ToCG());
-				switch (clipPath.FillMode)
-				{
-					case FillMode.Alternate:
-						Control.EOClip();
-						break;
-					case FillMode.Winding:
-						Control.Clip();
-						break;
-					default:
-						throw new NotSupportedException();
-				}
-			}
-			else if (clipBounds != null)
-			{
-				Control.SaveState();
+
+			if (clipBounds != null)
 				Control.ClipToRect(clipBounds.Value);
-			}
+
+			foreach (var path in clipPaths)
+				ApplyPathClip(path);
 		}
 
 		void RewindClip()
 		{
-			if (clipBounds != null || clipPath != null)
-			{
+			if (HasClip)
 				Control.RestoreState();
-			}
+		}
+
+		public void IntersectClip(IGraphicsPath path)
+		{
+			SetOffset(true);
+			path = path.Clone();
+			path.Transform(currentTransform.ToEto());
+			RewindTransform();
+
+			if (!HasClip)
+				Control.SaveState();
+			clipPaths.Add(path);
+			ApplyPathClip(path);
+			ApplyTransform();
 		}
 
 		void RewindTransform()
@@ -715,8 +737,7 @@ namespace Eto.iOS.Drawing
 		{
 			RewindTransform();
 			RewindClip();
-			clipBounds = null;
-			clipPath = null;
+			ClearClipState();
 			ApplyTransform();
 		}
 
